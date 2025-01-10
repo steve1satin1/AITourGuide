@@ -1,0 +1,100 @@
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+class MyDoc:
+    """PDF Parser, can chunk the document's text. Just specify the pdf path on the constructor!"""
+
+    # CONSTANTS
+    ByChar: str = "BYCHAR"
+    EXCLUDE = [". \xa0 ", ".   ","1 / 3 ΣΤΩΪΚΟ ΚΤΗΡΙΟ \xa0 ", "\xa0", "\xa0\xa0\xa0",
+               "\xa0\xa0 \xa0\xa0\xa0\xa0\xa0\xa0", "2 / 3 ΣΤΩΪΚΟ ΚΤΗΡΙΟ", "\xa0 \xa0 \xa0", "3 / 3"]
+
+    def __init__(self, filepath: str):
+
+        self._loader = PyPDFLoader(filepath)
+        self._pages = self._loader.load()
+        self._text = None
+        self._text_splitter = None
+        self._chunks = None
+        self._title = None
+
+        self._load_text() # Load text and title
+
+
+    def _chunk_by_char(self, chunk_size=500, chunk_overlap=20, length_function=len) -> None:
+        """Chunks the text recursively. The end result is close to chunking by paragraph"""
+        self._text_splitter = RecursiveCharacterTextSplitter(
+            chunk_overlap=chunk_overlap,
+            chunk_size=chunk_size,
+            length_function=length_function,
+            separators=["\n\xa0", "\n\n", "."]
+        )
+
+        chunks = self._text_splitter.split_text(self._text)
+        self._chunks = self._text_splitter.create_documents(chunks, metadatas=[{"title": self._title} for i in range(len(chunks))])
+
+
+    def get_text(self) -> str:
+        return self._text
+
+    def get_pages(self) -> list:
+        return self._pages
+
+    def get_title(self) -> str:
+        return self._title
+
+    def _load_text(self):
+        """Extracts the text from the pdf pages"""
+        # Basic text extraction from pdf
+        text = " ".join([page.page_content for page in self._pages])
+        text = text.replace("\n\n", " ").replace("\n", " ")
+        # Title extraction
+        self._text = text
+        self._title = self._text[:self._text.index("  ")]
+
+
+    def chunk_document(self, chunking_type=ByChar, color=None) -> None:
+        """
+        Chunks document depending the chunking type specified
+        :param chunking_type: The chunking method of the document's text.
+        :param color: The hexadecimal code of the color metadata of the chunks.
+        :return: None
+        """
+        if chunking_type == MyDoc.ByChar:
+            self._chunk_by_char()
+            if color:
+                self.specify_color(hexadecimal_code=color)
+        else:
+            Exception("You need to set the chunking type!!!")
+        self._clear_chunks()
+
+    def get_chunks(self) -> list:
+        """
+        Gets the chunks. Need to chunk the document first!!
+        :return: list[Document]
+        """
+        if self._chunks:
+            return self._chunks
+        raise Exception("You need to chunk the document first")
+
+    def _clear_chunks(self):
+        """Clears the chunks from unwanted characters. Should be called after the chunks have benn created!!!"""
+        chunks = []
+        for chunk in self._chunks:
+            for item in MyDoc.EXCLUDE:
+                chunk.page_content = chunk.page_content.replace(item, "")
+            chunks.append(chunk)
+        self._chunks = chunks
+
+    def specify_color(self, hexadecimal_code=None):
+        """Creates a new metadata of the color on the chunks created from the instance"""
+        if hexadecimal_code:
+            if self._chunks:
+                for chunk in self._chunks:
+                    chunk.metadata["color"] = hexadecimal_code
+            else:
+                raise Exception("You need to chunk the document first!")
+        else:
+            raise Exception("You need to specify the color!!!")
+
+

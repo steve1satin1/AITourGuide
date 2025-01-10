@@ -18,4 +18,4 @@ s = MyDoc("aiani dedomena/2009-04-22-14-52-16.pdf")
 s.chunk_document(chunking_type=MyDoc.ByChar)
 s.specify_color("fdfdfdf")
 print(s.get_chunks())
-#a change
+#a changehjhjhj

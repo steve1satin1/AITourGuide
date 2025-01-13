@@ -1,16 +1,24 @@
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from constantscls import Consts
 
-class MyDoc:
-    """PDF Parser, can chunk the document's text. Just specify the pdf path on the constructor!"""
+class MyDoc(Consts):
 
     # CONSTANTS
-    ByChar: str = "BYCHAR"
     EXCLUDE = [". \xa0 ", ".   ","1 / 3 ΣΤΩΪΚΟ ΚΤΗΡΙΟ \xa0 ", "\xa0", "\xa0\xa0\xa0",
                "\xa0\xa0 \xa0\xa0\xa0\xa0\xa0\xa0", "2 / 3 ΣΤΩΪΚΟ ΚΤΗΡΙΟ", "\xa0 \xa0 \xa0", "3 / 3"]
 
-    def __init__(self, filepath: str):
+    def __init__(self, filepath: str, chunking_type=None, color=None):
+        """
+        PDF Parser, can chunk the document's text. Just specify the pdf path on the constructor!
+        You can also specify a chunking type so that the chunking could be done immediately.
+        If you specify a color it will be added in the chunk metadata.
 
+        :param filepath: the path of the document to load
+        :param chunking_type: The chunking type. If not specified the chunking will not happen. You can do it later.
+        :param color: If specified the color to add as metadata. If not you can add it later.
+        """
+        ### INITIALIZATION ###
         self._loader = PyPDFLoader(filepath)
         self._pages = self._loader.load()
         self._text = None
@@ -18,7 +26,11 @@ class MyDoc:
         self._chunks = None
         self._title = None
 
-        self._load_text() # Load text and title
+        ### ACTIONS ###
+        self._load_text()  # Load text and title
+
+        if chunking_type:
+            self.chunk_document(chunking_type=chunking_type, color=color)
 
 
     def _chunk_by_char(self, chunk_size=500, chunk_overlap=20, length_function=len) -> None:
@@ -31,7 +43,14 @@ class MyDoc:
         )
 
         chunks = self._text_splitter.split_text(self._text)
-        self._chunks = self._text_splitter.create_documents(chunks, metadatas=[{"title": self._title} for i in range(len(chunks))])
+        self._chunks = self._text_splitter.create_documents(
+            chunks,
+            metadatas=[
+                {
+                    "title": self._title,
+                    "_id": f"{self._title}-{i}"
+                } for i in range(len(chunks))]
+        )
 
 
     def get_text(self) -> str:
@@ -45,6 +64,7 @@ class MyDoc:
 
     def _load_text(self):
         """Extracts the text from the pdf pages"""
+
         # Basic text extraction from pdf
         text = " ".join([page.page_content for page in self._pages])
         text = text.replace("\n\n", " ").replace("\n", " ")
@@ -53,7 +73,7 @@ class MyDoc:
         self._title = self._text[:self._text.index("  ")]
 
 
-    def chunk_document(self, chunking_type=ByChar, color=None) -> None:
+    def chunk_document(self, chunking_type=Consts.ByChar, color=None) -> None:
         """
         Chunks document depending the chunking type specified
         :param chunking_type: The chunking method of the document's text.
@@ -73,7 +93,7 @@ class MyDoc:
         Gets the chunks. Need to chunk the document first!!
         :return: list[Document]
         """
-        if self._chunks:
+        if self.has_chunks():
             return self._chunks
         raise Exception("You need to chunk the document first")
 
@@ -96,5 +116,13 @@ class MyDoc:
                 raise Exception("You need to chunk the document first!")
         else:
             raise Exception("You need to specify the color!!!")
+
+    def has_chunks(self) -> bool:
+        """
+        True if chunking has been done else False
+        :return: bool
+        """
+        return True if self._chunks else False
+
 
 

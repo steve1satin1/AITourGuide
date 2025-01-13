@@ -67,10 +67,27 @@ class MyDoc(Consts):
 
         # Basic text extraction from pdf
         text = " ".join([page.page_content for page in self._pages])
+        self._title = self._find_title(text)
         text = text.replace("\n\n", " ").replace("\n", " ")
         # Title extraction
         self._text = text
-        self._title = self._text[:self._text.index("  ")]
+
+    def _find_title(self, text: str) -> str:
+        """
+        Finds the title of a given text.
+        :param text: The text to find its title.
+        :return: The title.
+        """
+        stoppers = ["\n\n", "\n", "  ", "\xa0"]
+        stop_index = [ind for ind in stoppers if text.find(ind)!=-1]
+
+        if stop_index:
+            title = text[:text.index(stop_index[0])]
+            if len(title) > 20:
+                title = text[:6]
+        else:
+            title = text[:10]
+        return title
 
 
     def chunk_document(self, chunking_type=Consts.ByChar, color=None) -> None:
@@ -123,6 +140,9 @@ class MyDoc(Consts):
         :return: bool
         """
         return True if self._chunks else False
+
+    def __repr__(self):
+        return f"Title: {self.get_title()}\n\nText: {self.get_text()}\n\n"
 
 
 

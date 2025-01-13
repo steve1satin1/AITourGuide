@@ -29,7 +29,7 @@ class Embedder(Consts):
         else:
             raise Exception("You need to load the documents first! Use load_docs()")
 
-    def load_docs(self, directory="aiani dedomena/*", chunking_type=None, colors=list[None]) -> None:
+    def load_docs(self, directory="aiani dedomena/*", chunking_type=None, colors=None) -> None:
         """
         Loads the pdfs in MyDoc parser and saves them in self._docs.
         Also, if specified chunks the documents in the desired method.
@@ -43,8 +43,9 @@ class Embedder(Consts):
         # Load documents
         doc_paths = glob.glob(directory) # Load document paths
         for i in range(len(doc_paths)):
+            color = colors[i] if colors else None
             doc_path = doc_paths[i]
-            self._docs.append(MyDoc(doc_path, chunking_type=chunking_type, color=colors[i])) # Save docs in a list
+            self._docs.append(MyDoc(doc_path, chunking_type=chunking_type, color=color)) # Save docs in a list
 
         # Load Chunks if specified
         if chunking_type:
@@ -56,6 +57,16 @@ class Embedder(Consts):
         :return: list[MyDoc]
         """
         return self._docs
+
+    def get_chunks(self) -> list:
+        """
+        Gets the loaded chunks from the loaded documents
+        :return: list[chunks]
+        """
+        if self._chunks:
+            return self._chunks
+        else:
+            raise Exception("You need to chunk the loaded documents first!!! Use chunk_docs() method")
 
     def vectorize(self):
         pass
@@ -80,7 +91,8 @@ class Embedder(Consts):
         return True if self._docs else False
 
 
-s = MyDoc("aiani dedomena/2009-04-22-14-52-16.pdf")
-s.chunk_document(chunking_type=MyDoc.ByChar)
-s.specify_color("fdfdfdf")
-print(s.get_chunks())
+embedder = Embedder()
+embedder.load_docs(chunking_type=Embedder.ByChar)
+print(f"Documents:\n\n{embedder.get_docs()}")
+print(f"chunks:\n\n{embedder.get_chunks()}")
+

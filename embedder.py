@@ -91,7 +91,8 @@ class Embedder(Consts):
             name=collection_name,
             embedding_function=self._embedding_method,
             metadata={
-                "hnsw:space": "cosine"
+                "hnsw:space": "cosine",
+                "embedding_model": embedding_model
             }
         )
 
@@ -102,10 +103,12 @@ class Embedder(Consts):
         :return: Collection if exists else None.
         """
         try:
-            embedding_function=self._embedding_method
-            return self.chroma_client.get_collection(name=collection_name, embedding_function=embedding_function)
+            collection = self.chroma_client.get_collection(name=collection_name)
         except:
             return None
+        else:
+            self._set_embedding_func(model=collection.metadata["embedding_model"])
+            return self.chroma_client.get_collection(name=collection_name, embedding_function=self._embedding_method)
 
     def _get_collection_error(self, collection_name):
         """
@@ -113,11 +116,11 @@ class Embedder(Consts):
         :param collection_name: collection name
         :return: Collection if exists.
         """
-        try:
-            embedding_function = self._embedding_method
-            return self.chroma_client.get_collection(name=collection_name, embedding_function=embedding_function)
-        except:
+
+        col = self._get_collection(collection_name)
+        if not col:
             raise Exception("Collection does not exists!!!")
+        return col
 
     ## CALLABLE METHODS ##
     def chunk_docs(self, chunking_type=None, color=None):
@@ -258,7 +261,7 @@ class Embedder(Consts):
 
         return collection.query(
             query_texts=query_text,
-            n_results=n_results,
+            n_results=n_results
         )
 
     def count(self, collection_name) -> int:
@@ -289,7 +292,13 @@ class Embedder(Consts):
 
 
 embedder = Embedder()
-print(embedder.search_similar("Mycollection", "Τι είναι το σπίτι με τις σκάλες?"))
+# embedder.load_docs(directory="aiani dedomena/*", chunking_type=Embedder.ByChar)
+# embedder.delete_collections("all")
+
+# print(embedder.get_chunks())
+# embedder.add_data("Mycollection")
+
+print(embedder.search_similar("Mycollection", "Τι είναι η δεξαμενή?", n_results=3))
 
 
 

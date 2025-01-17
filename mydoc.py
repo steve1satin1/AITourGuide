@@ -42,7 +42,8 @@ class MyDoc(Consts):
             separators=["\n\xa0", "\n\n", "."]
         )
 
-        chunks = self._text_splitter.split_text(self._text)
+        chunks: list = self._text_splitter.split_text(self._text)
+
         self._chunks = self._text_splitter.create_documents(
             chunks,
             metadatas=[
@@ -104,6 +105,7 @@ class MyDoc(Consts):
         else:
             Exception("You need to set the chunking type!!!")
         self._clear_chunks()
+        self._add_title_to_chunks()
 
     def get_chunks(self) -> list:
         """
@@ -140,6 +142,15 @@ class MyDoc(Consts):
         :return: bool
         """
         return True if self._chunks else False
+
+    def _add_title_to_chunks(self):
+        """Adds the title to the chunks text content"""
+        if self._chunks:
+            for chunk in self._chunks:
+                # Add the title in each chunk
+                chunk.page_content = f"{self._title}: {chunk.page_content}"
+        else:
+            raise Exception("You need to chunk the document first!")
 
     def __repr__(self):
         return f"Title: {self.get_title()}\n\nText: {self.get_text()}\n\n"

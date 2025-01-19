@@ -93,7 +93,7 @@ class MyDoc(Consts):
 
     def chunk_document(self, chunking_type=Consts.ByChar, color=None) -> None:
         """
-        Chunks document depending the chunking type specified
+        Chunks document depending on the chunking type specified
         :param chunking_type: The chunking method of the document's text.
         :param color: The hexadecimal code of the color metadata of the chunks.
         :return: None

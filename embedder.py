@@ -1,4 +1,5 @@
 import glob
+import random
 from typing import Any
 
 from mydoc import MyDoc
@@ -8,6 +9,9 @@ from dotenv import load_dotenv
 import os
 import chromadb
 import chromadb.utils.embedding_functions as embedding_functions
+import numpy as np
+from sklearn.manifold import TSNE
+import plotly.graph_objects as plt
 
 class Embedder(Consts):
 
@@ -122,6 +126,23 @@ class Embedder(Consts):
             raise Exception("Collection does not exists!!!")
         return col
 
+    def _random_colors_generator(self, num_colors) -> list[str]:
+        """
+        Generates a list of random colors.
+        :param num_colors: The number of colors to generate.
+        :return: List of colors in hexadecimal format.
+        """
+        colors = []
+        used_colors = set()
+        for _ in range(num_colors):
+            while True:
+                hex_color = '#' + ''.join([random.choice('0123456789abcdef') for _ in range(6)])
+                if hex_color not in used_colors:
+                    used_colors.add(hex_color)
+                    colors.append(hex_color)
+                    break
+        return colors
+
     ## CALLABLE METHODS ##
     def chunk_docs(self, chunking_type=None, color=None):
         """
@@ -162,16 +183,18 @@ class Embedder(Consts):
                 raise Exception("You provided more colors than documents.")
             elif colors_len < doc_paths_len:
                 raise Exception("You provided less colors than documents length.")
+        else:
+            colors = self._random_colors_generator(len(doc_paths))
+            print(f"Colors generated: {colors}")
 
         # Load documents
         for i in range(len(doc_paths)):
-            color = colors[i] if colors else None
+            color = colors[i]
             doc_path = doc_paths[i]
             self._docs.append(MyDoc(doc_path, chunking_type=chunking_type, color=color)) # Save docs in a list
 
-            # Load Chunks if specified
         if chunking_type:
-            self.chunk_docs(chunking_type=chunking_type)
+            self.chunk_docs(chunking_type=chunking_type, color=color)
 
     def get_docs(self) -> list[MyDoc]:
         """
@@ -290,15 +313,94 @@ class Embedder(Consts):
         """
         return True if self._docs else False
 
+    def visualize(self, collection_name: str, dimensions=None) -> None:
+        """
+        Creates a plot with matplotlib of the embeddings.
+        :param collection_name: The name of the collection to visualize.
+        :param dimensions: List representing the dimensions to use for the plot. Default is ['2d']. If ['2d', '3d'] is given there will be two plots.
+        :return: None
+        """
+
+        # Set default dimensions for visualization to 2d
+        if dimensions is None:
+            dimensions = ["2d"]
+
+        # Extract metadata and embeddings from specified collection
+        collection = self._get_collection_error(collection_name)
+        results = collection.get(include=["embeddings", "metadatas"])
+        ids = results["ids"]
+        embeddings = results["embeddings"]
+        titles = []
+        colors = []
+        for i in range(len(results["metadatas"])):
+            titles.append(results["metadatas"][i]["title"])
+            colors.append(results["metadatas"][i]["color"])
+
+        print(f"ids: {ids}\nembeddings: {embeddings}\ntitles: {titles}\ncolors: {colors}")
+
+        # Reduce dimensionality with tsne package
+        original_embeddings = np.array(embeddings)
+
+        # For 2d
+        if "2d" in dimensions:
+            tsne = TSNE(n_components=2, random_state=42)
+            reduced_vectors = tsne.fit_transform(embeddings)
+            print(reduced_vectors)
+            fig = plt.Figure(data=[plt.Scatter(
+                x=reduced_vectors[:, 0],
+                y=reduced_vectors[:, 1],
+                mode='markers',
+                marker=dict(size=5, color=colors, opacity=0.8),
+                text=ids,
+                hoverinfo='text'
+            )])
+
+            fig.update_layout(
+                title='2D Chroma Vector Store Visualization',
+                scene=dict(xaxis_title='x', yaxis_title='y'),
+                width=800,
+                height=600,
+                margin=dict(r=20, b=10, l=10, t=40)
+            )
+
+            fig.show()
+
+        # For 3d
+        if "3d" in dimensions:
+            tsne = TSNE(n_components=3, random_state=42)
+            reduced_vectors = tsne.fit_transform(embeddings)
+            print(reduced_vectors)
+            fig = plt.Figure(data=[plt.Scatter3d(
+                x=reduced_vectors[:, 0],
+                y=reduced_vectors[:, 1],
+                z=reduced_vectors[:, 2],
+                mode='markers',
+                marker=dict(size=5, color=colors, opacity=0.8),
+                text=ids,
+                hoverinfo='text'
+            )])
+
+            fig.update_layout(
+                title='3D Chroma Vector Store Visualization',
+                scene=dict(xaxis_title='x', yaxis_title='y'),
+                width=800,
+                height=600,
+                margin=dict(r=20, b=10, l=10, t=40)
+            )
+
+            fig.show()
+
 
 embedder = Embedder()
 # embedder.load_docs(directory="aiani dedomena/*", chunking_type=Embedder.ByChar)
 # embedder.delete_collections("all")
-
-# print(embedder.get_chunks())
+#
+# # print(embedder.get_chunks())
 # embedder.add_data("Mycollection")
 
-print(embedder.search_similar("Mycollection", "Τι είναι η δεξαμενή?", n_results=3))
+# print(embedder.search_similar("Mycollection", "Τι είναι η δεξαμενή?", n_results=3))
+
+embedder.visualize("Mycollection", dimensions=["2d", "3d"])
 
 
 

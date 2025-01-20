@@ -1,7 +1,6 @@
 import glob
 import random
 from typing import Any
-
 from mydoc import MyDoc
 from constantscls import Consts
 from openai import OpenAI
@@ -19,7 +18,7 @@ class Embedder(Consts):
     def __init__(self, db_name="chromadb"):
         """
         In call a chroma db is created named as specified.
-        Call vectorize() to create a collection and add the data stored in _chunks list.
+        Call add_data() to create a collection and add the data stored in _chunks list.
         :param db_name: The name of the database.
         """
 
@@ -285,7 +284,7 @@ class Embedder(Consts):
         return collection.query(
             query_texts=query_text,
             n_results=n_results
-        )
+        )["documents"][0]
 
     def count(self, collection_name) -> int:
         """
@@ -344,8 +343,7 @@ class Embedder(Consts):
         # For 2d
         if "2d" in dimensions:
             tsne = TSNE(n_components=2, random_state=42)
-            reduced_vectors = tsne.fit_transform(embeddings)
-            print(reduced_vectors)
+            reduced_vectors = tsne.fit_transform(original_embeddings)
             fig = plt.Figure(data=[plt.Scatter(
                 x=reduced_vectors[:, 0],
                 y=reduced_vectors[:, 1],
@@ -368,7 +366,7 @@ class Embedder(Consts):
         # For 3d
         if "3d" in dimensions:
             tsne = TSNE(n_components=3, random_state=42)
-            reduced_vectors = tsne.fit_transform(embeddings)
+            reduced_vectors = tsne.fit_transform(original_embeddings)
             print(reduced_vectors)
             fig = plt.Figure(data=[plt.Scatter3d(
                 x=reduced_vectors[:, 0],
@@ -398,9 +396,9 @@ embedder = Embedder()
 # # print(embedder.get_chunks())
 # embedder.add_data("Mycollection")
 
-# print(embedder.search_similar("Mycollection", "Τι είναι η δεξαμενή?", n_results=3))
+print(embedder.search_similar("Mycollection", "Τι είναι η δεξαμενή?", n_results=3))
 
-embedder.visualize("Mycollection", dimensions=["2d", "3d"])
+# embedder.visualize("Mycollection", dimensions=["2d", "3d"])
 
 
 

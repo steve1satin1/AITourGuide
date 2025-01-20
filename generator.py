@@ -139,12 +139,17 @@ class Generator:
     def get_conversation(self):
         pass
 
+
 embedder = Embedder()
+embedder.load_docs(directory="aiani dedomena/*", chunking_type=Embedder.ByChar)
+
+if not embedder.collection_exists("Mycollection"):
+    embedder.add_data("Mycollection")
+
 gen = Generator(embedder=embedder, collection_name="Mycollection", n_results=5)
 
 while True:
     gen.generate_answer(input("Ask a question: "), model="gpt-4o-mini")
     print("\n")
 
-
-
+# embedder.visualize("Mycollection", dimensions=["2d", "3d"])

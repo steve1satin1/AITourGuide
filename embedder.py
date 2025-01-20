@@ -388,6 +388,14 @@ class Embedder(Consts):
 
             fig.show()
 
+    def collection_exists(self, collection_name):
+        """
+        Checks if a collection exists.
+        :param collection_name: The name of the collection to check.
+        :return: True if the collection exists, False otherwise.
+        """
+        return True if self._get_collection(collection_name) else False
+
 
 embedder = Embedder()
 # embedder.load_docs(directory="aiani dedomena/*", chunking_type=Embedder.ByChar)

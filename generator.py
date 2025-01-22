@@ -46,7 +46,7 @@ class Generator:
         for chunk in self._embedder.search_similar(self._collection_name, question, n_results=self._n_results):
             prompt += chunk + "\n\n"
 
-        print(prompt)
+        print(prompt) # TODO Delete this line
         return prompt
 
     def _fetch_conversation(self) -> list[dict[str, str]]:
@@ -109,12 +109,12 @@ class Generator:
         return True if not self._conversation else False
 
     ## ====== CALLABLE METHODS ====== ##
-    def generate_answer(self, question, model) -> None:
+    def generate_answer(self, question, model):
         """
         Generates an answer to the given question using the given model.
         :param model: The model to use for generating the answer.
         :param question: The question to answer.
-        :return: None
+        :return: generator of strings. Each string represents a chunk of the answer.
         """
         # Set the model to the specified one
         self._model = model
@@ -130,8 +130,11 @@ class Generator:
 
         answer = ""
         for chunk in answering_fn():
-            print(chunk, end="")
+            yield chunk
             answer += chunk
+
+        # Save only the user's question
+        self._conversation[-1]["content"] = question
 
         # Save answer to the conversation
         self._update_conversation("assistant", answer)
@@ -140,16 +143,19 @@ class Generator:
         pass
 
 
-embedder = Embedder()
-embedder.load_docs(directory="aiani dedomena/*", chunking_type=Embedder.ByChar)
-
-if not embedder.collection_exists("Mycollection"):
-    embedder.add_data("Mycollection")
-
-gen = Generator(embedder=embedder, collection_name="Mycollection", n_results=5)
-
-while True:
-    gen.generate_answer(input("Ask a question: "), model="gpt-4o-mini")
-    print("\n")
+# embedder = Embedder()
+# embedder.load_docs(directory="aiani dedomena/*", chunking_type=Embedder.ByChar)
+#
+# if not embedder.collection_exists("Mycollection"):
+#     embedder.add_data("Mycollection")
+#
+# gen = Generator(embedder=embedder, collection_name="Mycollection", n_results=5)
+#
+# while True:
+#     print("==================================================")
+#     gen.generate_answer(input("Ask a question: "), model="gpt-4o-mini")
+#     print("\n")
+#     print("==================================================")
+#     print(f"conversation:\n{gen._fetch_conversation()}\n\n")
 
 # embedder.visualize("Mycollection", dimensions=["2d", "3d"])

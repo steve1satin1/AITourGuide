@@ -6,7 +6,10 @@ class MyDoc(Consts):
 
     # CONSTANTS
     EXCLUDE = [". \xa0 ", ".   ","1 / 3 ΣΤΩΪΚΟ ΚΤΗΡΙΟ \xa0 ", "\xa0", "\xa0\xa0\xa0",
-               "\xa0\xa0 \xa0\xa0\xa0\xa0\xa0\xa0", "2 / 3 ΣΤΩΪΚΟ ΚΤΗΡΙΟ", "\xa0 \xa0 \xa0", "3 / 3"]
+               "\xa0\xa0 \xa0\xa0\xa0\xa0\xa0\xa0", "2 / 3 ΣΤΩΪΚΟ ΚΤΗΡΙΟ", "\xa0 \xa0 \xa0", "3 / 3", "1 / 1", "1 / 2",
+               "2 / 2", "1 / 4", "2 / 4", "3 / 4", "4 / 4", "Δρ Γεωργία Καραμήτρου Μεντεσίδη",  "Φωτογραφίες", "1 / 5",
+               "2 / 5", "3 / 5", "4 / 5", "5 / 5", "1 / 7", "2 / 7", "3 / 7", "4 / 5", "5 / 7", "6 / 7", "7 / 7", "1 / 3",
+               "2 / 3", "3 / 3"]
 
     def __init__(self, filepath: str, chunking_type=None, color=None):
         """
@@ -106,6 +109,7 @@ class MyDoc(Consts):
             Exception("You need to set the chunking type!!!")
         self._clear_chunks()
         self._add_title_to_chunks()
+        self._add_doc_path()
 
     def get_chunks(self) -> list:
         """
@@ -151,6 +155,14 @@ class MyDoc(Consts):
                 chunk.page_content = f"{self._title}: {chunk.page_content}"
         else:
             raise Exception("You need to chunk the document first!")
+
+    def _add_doc_path(self):
+        """Adds the doc path to the chunk metadata"""
+        if self._chunks:
+            for chunk in self._chunks:
+                chunk.metadata["doc_path"] = self._loader.file_path
+        else:
+            Exception("You need to chunk the document first!")
 
     def __repr__(self):
         return f"Title: {self.get_title()}\n\nText: {self.get_text()}\n\n"

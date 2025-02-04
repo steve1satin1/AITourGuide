@@ -4,8 +4,8 @@ from embedder import Embedder
 
 class UIController:
 
-    def __init__(self):
-        self.gen = Generator(Embedder(), "Mycollection", n_results=5)
+    def __init__(self, n_results=5):
+        self.gen = Generator(Embedder(), "Mycollection", n_results=n_results)
         self.embedder = Embedder()
 
         self._prepare_embedder()
@@ -18,6 +18,7 @@ class UIController:
         """
 
         if not self.embedder.collection_exists("Mycollection"):
+            print("Loading documents embeddings...")
             self.embedder.load_docs(directory="aiani dedomena/*", chunking_type=Embedder.ByChar)
             self.embedder.add_data("Mycollection")
 
@@ -70,5 +71,7 @@ class UIController:
         demo.launch(share=share)
 
 
-ui = UIController()
-ui.create_ui(share=True)
+ui = UIController(n_results=20)
+# ui.embedder.delete_collections("all")
+# ui.embedder.visualize(collection_name="Mycollection", dimensions=["2d", "3d"])
+ui.create_ui(share=False)

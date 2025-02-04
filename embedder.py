@@ -57,7 +57,8 @@ class Embedder(Consts):
             title = chunk.metadata["title"]
             text = chunk.page_content
             color = chunk.metadata.get("color", "black") #TODO put the hexadecimal value if needed
-            yield _id, title, text, color
+            doc_path = chunk.metadata["doc_path"]
+            yield _id, title, text, color, doc_path
 
     def _set_embedding_func(self, model="text-embedding-3-small"):
         """
@@ -202,11 +203,16 @@ class Embedder(Consts):
         """
         return self._docs
 
-    def get_chunks(self) -> list:
+    def get_chunks(self, collection_name=None) -> list:
         """
-        Gets the loaded chunks from the loaded documents
+        Gets the loaded chunks from the loaded documents. If a collecion_name is specified the chunks will be from that collection.
+        :param collection_name: If specified the chunks of this collection will be fetched else the loaded
         :return: list[chunks]
         """
+        if collection_name:
+            collection = self._get_collection_error(collection_name)
+            return collection.get()
+
         if self._chunks:
             return self._chunks
         else:
@@ -219,21 +225,22 @@ class Embedder(Consts):
         :param collection_name: The name of the collection to add the data.
         :return: None
         """
-        # If collection exists get it else create it.
+        # If a collection exists get it else create it.
         collection = self._get_collection(collection_name)
         if not collection:
             collection = self._create_collection(collection_name, embedding_model)
 
         collection.add(
-            documents=[text for _, _, text, _ in self._vectors_generator()],
+            documents=[text for _, _, text, _, _ in self._vectors_generator()],
             metadatas=[
                 {
                     "id": _id,
                     "title": title,
                     "color": color,
-                } for _id, title, text, color in self._vectors_generator()
+                    "doc_path": doc_path
+                } for _id, title, text, color, doc_path in self._vectors_generator()
             ],
-            ids=[_id for _id, _, _, _ in self._vectors_generator()]
+            ids=[_id for _id, _, _, _, _ in self._vectors_generator()]
         )
 
 
@@ -265,13 +272,13 @@ class Embedder(Consts):
         return deleted_collections
 
 
-    def search_similar(self, collection_name, *input_text, n_results=3) -> list[str]:
+    def search_similar(self, collection_name, *input_text, n_results=3) -> tuple[Any, list[Any]]:
         """
         Searches specified collection for similar text chunks according to given input_text.
         :param n_results: How many results to return.
         :param collection_name: The collection to search to.
         :param input_text: The text chunk/s to search for similar chunks.
-        :return: list of results.
+        :return: tuple of results where the first index is the text result and the second index is the doc_path of each result.
         """
 
         query_text = list(input_text)
@@ -281,10 +288,14 @@ class Embedder(Consts):
         # Get collection or raise error if it doesn't exist.
         collection = self._get_collection_error(collection_name)
 
-        return collection.query(
+        # Get results
+        results = collection.query(
             query_texts=query_text,
-            n_results=n_results
-        )["documents"][0]
+            n_results=n_results,
+            include=["documents", "metadatas"]
+        )
+
+        return results["documents"][0], [item["doc_path"] for item in results["metadatas"][0]]
 
     def count(self, collection_name) -> int:
         """
@@ -397,16 +408,19 @@ class Embedder(Consts):
         return True if self._get_collection(collection_name) else False
 
 
-embedder = Embedder()
+# embedder = Embedder()
 # embedder.load_docs(directory="aiani dedomena/*", chunking_type=Embedder.ByChar)
-# embedder.delete_collections("all")
-#
 # # print(embedder.get_chunks())
+#
+#
+# embedder.delete_collections("all")
+# #
+# # # print(embedder.get_chunks())
 # embedder.add_data("Mycollection")
-
-print(embedder.search_similar("Mycollection", "Τι είναι η δεξαμενή?", n_results=3))
-
-# embedder.visualize("Mycollection", dimensions=["2d", "3d"])
+#
+# print(embedder.search_similar("Mycollection", "Τι είναι η δεξαμενή?", n_results=3))
+#
+# # embedder.visualize("Mycollection", dimensions=["2d", "3d"])
 
 
 

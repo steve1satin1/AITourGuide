@@ -21,7 +21,10 @@ class Generator:
         self._system_prompt = ("Είσαι ένας ξεναγός του αρχαιολογικού μουσείου Αιανής που βρισκεται στην Κοζάνη (μια μικρή πόλη στην Ελλάδα). "
                                "Στόχος σου είναι να απαντάς στις ερωτήσεις που κάνουν οι επισκέπτες. "
                                "Για κάθε ερώτηση θα σου παρέχεται σχετικά κομμάτια κειμένου τα οποία μπορείς να συμβουλευτείς για να απαντήσεις στην ερώτηση του χρήστη."
-                               "Στην περίπτωση που δεν γνωρίζεις την απάντηση στην ερώτηση που έθεσε ο χρήστης πες με ευγενικό τρόπο πως δεν γνωρίζεις την απάντηση και μήπως θέλει να ρωτήσει κάτι άλλο.")
+                               "Στην περίπτωση που δεν γνωρίζεις την απάντηση στην ερώτηση που έθεσε ο χρήστης πες με ευγενικό τρόπο πως δεν γνωρίζεις την απάντηση και μήπως θέλει να ρωτήσει κάτι άλλο."
+                               "Σε κάθε κομμάτι κειμένου που σου παρέχεται θα υπάρχει και η πηγή απο την οποία προήλθε και θα αναγράφεται στο τέλος του μετά την λέξη κλειδί «Πηγή:», "
+                               "αν χρησιμοποιήσεις κάποια απο τα κομμάτια αυτά στο τέλος της απάντησης σου παρέθεσε της πηγές απο τα κομμάτια κειμένου που χρησιμοποίησες γράφοντας «Πηγές: (αναφορά των πηγών σε bullets)»"
+                               "Μην βάζεις δικές σου πηγές αλλά μόνο αυτές που αναφέρονται σε κάθε κομμάτι κειμένου μετά την λέξη κλειδή «Πηγή:»")
         self._model = "gpt-4o-mini"
         self._conversation = [
             {"role": "system", "content": self._system_prompt}
@@ -43,8 +46,12 @@ class Generator:
         prompt = ""
         prompt += f"{question}\n\n"
         prompt += "Παρακαλώ συμβουλεύσου τα παρακάτω σχετικά με την ερώτηση κείμενα πριν απαντήσεις: \n\n"
-        for chunk in self._embedder.search_similar(self._collection_name, question, n_results=self._n_results):
-            prompt += chunk + "\n\n"
+
+        similars = self._embedder.search_similar(self._collection_name, question, n_results=self._n_results)
+        texts = similars[0]
+        sources = similars[1]
+        for chunk, source in tuple(zip(texts, sources)):
+            prompt += chunk + " Πηγή: "+ source + "\n\n"
 
         print(prompt) # TODO Delete this line
         return prompt
@@ -108,6 +115,23 @@ class Generator:
         """
         return True if not self._conversation else False
 
+    def _make_sources_links(self, text: str) -> str | None:
+        """
+        Makes the sources links that open in a new tab
+        :param text: The text to make the sources links for
+        """
+        if "Πηγές" in text:
+            start_index = text.index("Πηγές:")
+            sources_txt = text[start_index:]
+            sources_list = sources_txt.split("\n")[1:]
+            for source in sources_list:
+                n_source = source.strip('- ').replace("\\", "/")
+                # text = text.replace(source, f"<a href='file///{n_source}'>{n_source}</a>")
+                text = text.replace(source, "<a href='file:///C:/Users/στεργιος/PycharmProjects/Diplomatiki/aiani dedomena/megaloi_domoi.pdf'>link</a>")
+            print("sources: ", text)
+            return text
+
+
     ## ====== CALLABLE METHODS ====== ##
     def generate_answer(self, question, model):
         """
@@ -132,6 +156,9 @@ class Generator:
         for chunk in answering_fn():
             yield chunk
             answer += chunk
+        # sources_answer = self._make_sources_links(answer)
+        # if sources_answer:
+        #     yield sources_answer
 
         # Save only the user's question
         self._conversation[-1]["content"] = question

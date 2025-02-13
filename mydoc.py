@@ -31,6 +31,7 @@ class MyDoc(Consts):
 
         ### ACTIONS ###
         self._load_text()  # Load text and title
+        self._clear_pages()
 
         if chunking_type:
             self.chunk_document(chunking_type=chunking_type, color=color)
@@ -59,6 +60,19 @@ class MyDoc(Consts):
 
     def get_text(self) -> str:
         return self._text
+
+    def _clear_pages(self):
+        """
+        Clears the pages contents
+        :return: None
+        """
+        pages = []
+        for page in self._pages:
+            for item in MyDoc.EXCLUDE:
+                if item in page.page_content:
+                    page.page_content = page.page_content.replace(item, "")
+            pages.append(page)
+        self._pages = pages
 
     def get_pages(self) -> list:
         return self._pages

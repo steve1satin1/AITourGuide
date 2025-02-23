@@ -35,12 +35,12 @@ class Generator:
         self._n_results = n_results
 
     ## ====== PRIVATE METHODS ====== ##
-    def _prepare_prompt(self, question: str) -> str:
+    def _prepare_prompt(self, question: str) -> tuple[str, list[str]]:
         """
         Creates a prompt for the GPT model.
         The prompt will be added to the self._conversation.
         :param question: The user's question.
-        :return: The prompt for the GPT model.
+        :return: The prompt for the GPT model and the contexts if needed.
         """
 
         prompt = ""
@@ -54,7 +54,7 @@ class Generator:
             prompt += chunk + " Πηγή: "+ source + "\n\n"
 
         print(prompt) # TODO Delete this line
-        return prompt
+        return prompt, texts
 
     def _fetch_conversation(self) -> list[dict[str, str]]:
         """
@@ -144,7 +144,7 @@ class Generator:
         self._model = model
 
         # Prepare the prompt
-        prompt = self._prepare_prompt(question)
+        prompt, _ = self._prepare_prompt(question)
 
         # Update the conversation list
         self._update_conversation("user", prompt)
@@ -156,15 +156,44 @@ class Generator:
         for chunk in answering_fn():
             yield chunk
             answer += chunk
-        # sources_answer = self._make_sources_links(answer)
-        # if sources_answer:
-        #     yield sources_answer
 
         # Save only the user's question
         self._conversation[-1]["content"] = question
 
         # Save answer to the conversation
         self._update_conversation("assistant", answer)
+
+    def generate_answer_structured(self, question, model) -> tuple[str, list[str]]:
+        """
+        Generates answer and provided contexts as structured output.
+        :param question: The question for the model to answer.
+        :param model: The model to use for answering the question.
+        :return: Tuple(answer, contexts)
+        """
+
+        # Set the model to the specified one
+        self._model = model
+
+        # Prepare the prompt
+        prompt, contexts = self._prepare_prompt(question)
+
+        # Update the conversation list
+        self._update_conversation("user", prompt)
+
+        # Get the answering fn based on the given model
+        answering_fn = self._get_answering_fn()
+
+        answer = ""
+        for chunk in answering_fn():
+            answer += chunk
+
+        # Save only the user's question
+        self._conversation[-1]["content"] = question
+
+        # Save answer to the conversation
+        self._update_conversation("assistant", answer)
+
+        return answer, contexts
 
     def get_conversation(self):
         pass

@@ -1,13 +1,25 @@
+import json
 import pickle
+from xmlrpc.client import Boolean
+
 from dotenv import load_dotenv
 import os
 import glob
+from embedder import Embedder
 from mydoc import MyDoc
 from tqdm import tqdm
 from pydantic import BaseModel
 from openai import OpenAI
-from ragas import SingleTurnSample
+from ragas import SingleTurnSample, EvaluationDataset, evaluate
 from ragas.testset import Testset, TestsetSample
+from generator import Generator
+from langchain_openai import ChatOpenAI
+from ragas.llms import LangchainLLMWrapper
+from ragas.metrics import(FactualCorrectness, Faithfulness, LLMContextRecall,
+                          NonLLMStringSimilarity, BleuScore, AnswerCorrectness, ResponseRelevancy, SemanticSimilarity,
+                          ContextEntityRecall, LLMContextPrecisionWithReference, RougeScore)
+from ragas.run_config import RunConfig
+
 
 class DataStructure(BaseModel):
     user_input: str
@@ -114,10 +126,11 @@ class Tester:
             pickle.dump(data, f)
 
     @staticmethod
-    def _load_pickle(filename):
+    def _load_pickle(filename, raise_exception=False):
         """
         Loads the pickle file with the given name.
         :param filename: The name of the pickle file.
+        :param raise_exception: Weather or not to raise exception if filename not found default to False.
         :return: The data stored in the pickle file or None if the file does not exist or is not a pickle file.
         """
         if ".pkl" not in filename:
@@ -128,13 +141,102 @@ class Tester:
                 data = pickle.load(f)
                 return data
         except FileNotFoundError:
+            if raise_exception:
+                raise FileNotFoundError("You need to accept the data set first!!")
             return None
+
+    def _query_generator(self, generator: Generator) -> tuple[list[str], list[list[str]]]:
+        """
+        prompts the given generator function with the test set questions and collects the answers and retrieved texts
+        :param generator: The generator object that will answer the test questions.
+        :return: a tuple of answers and contexts in lists
+        """
+
+        # Load test_set_accepted.pkl
+        dataset = self._load_pickle("test_set_accepted.pkl")
+
+        dataset = dataset.to_list()
+        print(dataset)
+
+        # Extract questions
+        questions = []
+        for data in dataset:
+            questions.append(data["user_input"])
+
+        # Query generator
+        print("Answering the test questions")
+        ans = []
+        cont = []
+        for question in tqdm(questions, total=len(questions)):
+            answer, context = generator.generate_answer_structured(question, model="gpt-4o-mini")
+            ans.append(answer)
+            cont.append(context)
+
+        return ans, cont
+
+
+    def _create_eval_set(self, answers, contexts) -> EvaluationDataset:
+        """
+        Creates the evaluation set based on the 'test_set_accepted.pkl' answers and contexts.
+        :param answers: The answers to the test set question.
+        :param contexts: The contexts provided to the model to answer.
+        :return: The evaluation set.
+        """
+
+        # Load test_set_accepted.pkl
+        dataset = self._load_pickle("test_set_accepted.pkl")
+        dataset = dataset.to_list()
+
+        # Create the eval set
+        for i in range(len(dataset)):
+            dataset[i]["retrieved_contexts"] = contexts[i]
+            dataset[i]["response"] = answers[i]
+
+        # Convert back to Testset and EvaluationSet
+        dataset = Testset.from_list(data=dataset).to_evaluation_dataset()
+
+        print(f"Eval set: {dataset}")
+        return dataset
+
+    @staticmethod
+    def _get_metrics(metrics: list[str]) -> list:
+        """
+        Parse through the metrics and gets the metrics objects
+        :param metrics: List of the metrics
+        :return: List of metrics as ragas objects
+        """
+
+        available_metrics = {
+            "answer_correctness": AnswerCorrectness(),
+            "response_relevancy": ResponseRelevancy(),
+            "semantic_similarity": SemanticSimilarity(),
+            "context_entity_recall": ContextEntityRecall(),
+            "llm_context_precision_with_reference": LLMContextPrecisionWithReference(),
+            "context_recall": LLMContextRecall(),
+            "factual_correctness": FactualCorrectness(),
+            "faithfulness": Faithfulness(),
+            "non_llm_string_similarity": NonLLMStringSimilarity(),
+            "blue_score": BleuScore(),
+            "rouge_score": RougeScore(),
+
+        }
+
+        metrics_to_return = [available_metrics.get(metric, "nan") for metric in metrics]
+
+        if not metrics or "nan" in metrics_to_return:
+            raise Exception("Please provide metrics for the evaluation. Available metrics are: answer_correctness, "
+                            "response_relevancy, semantic_similarity, context_entity_recall, "
+                            "llm_context_precision_with_reference, context_recall, factual_correctness, faithfulness, "
+                            "non_llm_string_similarity, blue_score, rouge_score")
+
+        return metrics_to_return
+
 
     # === CALLABLE METHODS === #
 
     def generate_test_data(self, directory="aiani dedomena/*", model="gpt-4o-mini") -> Testset:
         """
-        Generates evaluation data set in ragas ready format.
+        Generates Test data set in ragas ready format.
         If the dataset already exists, it will be loaded from a pickle file.
         :param directory: The path to the documents.
         :param model: The model to use for generating the test data. Default is "gpt-4o-mini".
@@ -144,7 +246,7 @@ class Tester:
         # Check if eval dataset already exists
         generated_data = self._load_pickle("eval_dataset.pkl")
         if generated_data:
-            print("Eval dataset already exists. Loading...")
+            print("test dataset already exists. Loading...")
             return generated_data
         else:
             # If data set does not already exist generate them
@@ -153,7 +255,7 @@ class Tester:
             # Generate data for each document
             generated_data = []
             print("Generating data...")
-            for doc in tqdm(self.docs[10:20], total=len(self.docs[10:13])):
+            for doc in tqdm(self.docs, total=len(self.docs)):
                 # extract text
                 text = ""
                 for page in doc:
@@ -167,33 +269,144 @@ class Tester:
             print("Dataset: ", generated_data)
 
             # Save data
-            self._save_pickle("eval_dataset.pkl", generated_data)
-            print("Eval dataset saved.")
+            self._save_pickle("test_set_not_accepted.pkl", generated_data)
+            print("Test dataset saved.")
 
         return generated_data
 
-    def visualize_eval_dataset(self) -> None:
+    def upload_dataset(self, dataset_name) -> None:
         """
-        Loads evaluation dataset from 'eval_dataset.pkl' and
-        demonstrates them in the ragas dashboard.
+        Loads 'dataset_name' dataset and uploads it to ragas.
+        :param dataset_name: The name of the dataset to upload
         :return: None
         :raises FileNotFoundError: If the dataset does not exist.
         """
 
-        dataset = self._load_pickle("eval_dataset.pkl")
+        dataset = self._load_pickle(dataset_name)
         if not dataset:
             raise FileNotFoundError("Eval dataset does not exist. Please generate it first.")
 
-        # dataset = dataset.to_pandas()
         dataset.upload()
+
+    def accept_test_set(self, filename):
+        """
+        Loads the 'testset.json', the approved test set, into Testset format
+        and creates the 'test_set_accepted.pkl' file.
+        :param filename: The filename of the test set to load.
+        :return: None
+        """
+
+        with open(filename, "r", encoding="utf-8") as f:
+            annotated_testset = json.load(f)
+
+        samples = []
+        for sample in annotated_testset:
+            if sample["approval_status"] == "approved":
+                samples.append(TestsetSample(**sample))
+
+        testset = Testset(samples=samples)
+
+        self._save_pickle("test_set_accepted.pkl", testset)
+
+
+    def to_csv(self, dataset: str, filename: str):
+        """
+        Saves in csv form the give dataset.
+        It should be in pkl format and the supporting types are EvaluationResult and EvaluationDataset.
+        :param dataset: The data set to transform in csv. It should be a .pkl
+        :param filename: The name of the cdv file.
+        :return: None
+        """
+
+        # Load pkl file
+        ds = self._load_pickle(dataset)
+
+        df = ds.to_pandas().to_csv(path_or_buf=filename, encoding="utf-16")
+        print(df)
+
 
 
 
     @classmethod
-    def test(cls, generator_function):
-        pass
+    def test(cls, generator: Generator, metrics: list[str], save_as="evaluated_dataset.pkl", load_evaluation_set="", upload: Boolean=True):
+        """
+        Runs a test set on a generator and evaluates the results.
+        The test set should be first accepted using the 'accept_test_set()' method.
+        The results are saved on file named as 'filename'
+        :param generator: A generator to answer the questions.
+        :param metrics: List of metrics to evaluate the evaluation set. Available metrics are: answer_correctness,
+                        response_relevancy, semantic_similarity, context_entity_recall,
+                        llm_context_precision_with_reference, context_recall, factual_correctness, faithfulness,
+                        non_llm_string_similarity, blue_score, rouge_score.
+        :param save_as: The name of the file that results of evaluation will be saved,
+        defaults to 'evaluated_dataset.pkl'.
+        :param load_evaluation_set: The name of the evaluation set to load, if none is given, the evaluation set will be generated.
+        :param upload: Weather or not to upload the evaluated data set to ragas.
+        Default is True
+        :return: None
+        """
+
+        # Initiate class
+        t = cls()
+
+        # Initiate evaluator llm.
+        llm = ChatOpenAI(model="gpt-4o-mini")
+        evaluator_llm = LangchainLLMWrapper(llm)
+
+        # If specified load evaluation data set
+        if load_evaluation_set:
+            print("Loading evaluation data set that already exists...")
+            eval_set = t._load_pickle(load_evaluation_set)
+        else:
+            # Answer test question from generator and create evaluation dataset.
+            print("creating evaluation data set...")
+            answers, contexts = t._query_generator(generator)
+            eval_set = t._create_eval_set(answers, contexts)
+
+            # Save eval set
+            print("Saving evaluation data set that created...")
+            t._save_pickle("evaluation_set.pkl", eval_set)
+
+        # Get evaluation dataset results.
+        result = evaluate(
+            dataset=eval_set,
+            metrics=t._get_metrics(metrics),
+            llm=evaluator_llm,
+            run_config=RunConfig(
+                timeout=360,
+                max_retries=20,
+                max_wait=120,
+                max_workers=4,
+            )
+        )
+
+        # Save evaluation dataset
+        t._save_pickle(save_as, result)
+
+        print(result)
+
+        # Upload evaluation results on ragas.
+        if upload:
+            result.upload()
 
 
-t = Tester()
-t.generate_test_data(model="gpt-4o-mini")
-t.visualize_eval_dataset()
+
+
+
+
+
+
+# Tester.test(Generator(Embedder(), "Mycollection", n_results=20), load_evaluation_set="evaluation_set.pkl")
+#
+# t = Tester()
+# t.to_csv("evaluated_dataset.pkl", "evaluated_dataset_csv.csv")
+# t.accept_test_set("testset.json")
+
+# t.generate_test_data(model="gpt-4o-mini")
+# t.upload_dataset("evaluated_dataset.pkl")
+
+
+# gen = Generator(Embedder(), "Mycollection", n_results=10)
+# answers, contexts = t._query_generator(gen)
+# t._create_eval_set(answers, contexts, 10)
+# print(f"answers: {answers}\n\ncontexts: {contexts}")

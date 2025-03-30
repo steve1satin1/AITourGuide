@@ -43,7 +43,7 @@ class MyDoc(Consts):
             chunk_overlap=chunk_overlap,
             chunk_size=chunk_size,
             length_function=length_function,
-            separators=["\n\xa0", "\n\n", "."]
+            separators=["\n\xa0", "\n\n", '    ']
         )
 
         chunks: list = self._text_splitter.split_text(self._text)
@@ -84,7 +84,7 @@ class MyDoc(Consts):
         """Extracts the text from the pdf pages"""
 
         # Basic text extraction from pdf
-        text = " ".join([page.page_content for page in self._pages])
+        text: str = " ".join([page.page_content for page in self._pages])
         self._title = self._find_title(text)
         text = text.replace("\n\n", " ").replace("\n", " ")
         # Title extraction
@@ -96,12 +96,12 @@ class MyDoc(Consts):
         :param text: The text to find its title.
         :return: The title.
         """
-        stoppers = ["\n\n", "\n", "  ", "\xa0"]
+        stoppers = ["\n\n", "\n", "    ", "  ", "\xa0"]
         stop_index = [ind for ind in stoppers if text.find(ind)!=-1]
 
         if stop_index:
             title = text[:text.index(stop_index[0])]
-            if len(title) > 20:
+            if len(title) > 60:
                 title = text[:6]
         else:
             title = text[:10]
@@ -138,6 +138,9 @@ class MyDoc(Consts):
         """Clears the chunks from unwanted characters. Should be called after the chunks have benn created!!!"""
         chunks = []
         for chunk in self._chunks:
+            # exclude chunks that are less than 50 characters in length.
+            if len(chunk.page_content) < 50:
+                continue
             for item in MyDoc.EXCLUDE:
                 chunk.page_content = chunk.page_content.replace(item, "")
             chunks.append(chunk)

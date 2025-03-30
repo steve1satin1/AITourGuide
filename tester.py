@@ -15,9 +15,9 @@ from ragas.testset import Testset, TestsetSample
 from generator import Generator
 from langchain_openai import ChatOpenAI
 from ragas.llms import LangchainLLMWrapper
-from ragas.metrics import(FactualCorrectness, Faithfulness, LLMContextRecall,
-                          NonLLMStringSimilarity, BleuScore, AnswerCorrectness, ResponseRelevancy, SemanticSimilarity,
-                          ContextEntityRecall, LLMContextPrecisionWithReference, RougeScore)
+from ragas.metrics import (FactualCorrectness, Faithfulness, LLMContextRecall,
+                           NonLLMStringSimilarity, BleuScore, AnswerCorrectness, ResponseRelevancy, SemanticSimilarity,
+                           ContextEntityRecall, LLMContextPrecisionWithReference, RougeScore)
 from ragas.run_config import RunConfig
 
 
@@ -29,16 +29,18 @@ class DataStructure(BaseModel):
     def to_ragas_sample(self):
         return TestsetSample(
             eval_sample=
-                SingleTurnSample(
-                    user_input=self.user_input,
-                    reference_contexts=self.reference_contexts,
-                    reference=self.reference,
+            SingleTurnSample(
+                user_input=self.user_input,
+                reference_contexts=self.reference_contexts,
+                reference=self.reference,
             ),
             synthesizer_name="single_hop_specifc_query_synthesizer"
         )
 
+
 class DataList(BaseModel):
     data: list[DataStructure]
+
 
 class Tester:
     def __init__(self):
@@ -49,23 +51,170 @@ class Tester:
 
         self.loader = None
         self.docs = None
+        self._users_prompt = ""
 
     # ===  PRIVATE METHODS === #
-    def _load_docs(self, directory):
+    def _set_user_prompt(self, question_categorie="s7", num=2):
+        """
+        Sets the users prompt for the test data generation
+        :param question_categorie: The question category to generate
+        :param num: Number of questions per document cluster to generate
+        :return: None
+        """
+        # s1 Numerical questions
+        # s2 Dates relevant questions
+        # s3 Multiple choice questions
+        # s4 Questions containing multiple questions
+        # s5 Multiple choice questions that need combination of information
+        # s6 Questions that there arent any info in the docs about it
+        # s7 mine
+        categories = {
+            "s1": (
+                f"επέστρεψε ακριβώς {num} δείγματα ως structured output, (κάθε δείγμα αποτελείται απο user_input, reference_contexts "
+                "και reference). Για την παραγωγή των δειγμάτων θα πρέπει να εντοπίσεις έναν αριθμό και να παράξεις μια"
+                "ερώτηση που η απάντηση της να είναι ο αριθμός που εντόπισες. Η ερώτηση που θα παράξεις θα πρέπει να "
+                "μπορεί να απαντηθεί απο το δοθέν κείμενο."
+                "Τα δείγματα θα πρέπει να υπακούν στην εξής δομή:"
+                "user_input: ερώτηση πάνω στο κείμενο"
+                "reference_contexts: σημεία του κειμένου πάνω στα οποία βασίζεται η σωστή απάντηση"
+                "reference: Η σωστή απάντηση στην ερώτηση"
+                "Παραδείγμα:"
+                "user_input: Ποιό είναι το βάθος της κυκλικής δεξαμενής;"
+                "reference_contexts: ['Η κυκλική δεξαμενή έχει βάθος 8,5μ']"
+                "reference: 8.5 μέτρα"
+                "Κείμενο πάνω στο οποίο θα δημιουργηθούν τα δείγματα: "),
+
+            "s2": (
+                f"επέστρεψε ακριβώς {num} δείγματα ως structured output, (κάθε δείγμα αποτελείται απο user_input, reference_contexts "
+                "και reference). Για την παραγωγή των δειγμάτων θα πρέπει να εντοπίσεις μια ημερομηνία ή χρονική περίοδο"
+                "και να παράξεις μια ερώτηση που η απάντηση της να είναι η ημερομηνία ή η χρονική περίοδο που εντόπισες."
+                "Η ερώτηση που θα παράξεις θα πρέπει να μπορεί να απαντηθεί απο το δοθέν κείμενο. "
+                "Τα δείγματα θα πρέπει να υπακούν στην εξής δομή:"
+                "user_input: ερώτηση πάνω στο κείμενο"
+                "reference_contexts: σημεία του κειμένου πάνω στα οποία βασίζεται η σωστή απάντηση"
+                "reference: Η σωστή απάντηση στην ερώτηση"
+                "Παραδείγμα:"
+                "user_input: Πότε χρονολογείται το κτήριο που βρέθηκε στην ανασκαφή των μεγάλων δόμων;"
+                "reference_contexts: ['Ανασκαφή Μεγάλων Δόμων, Περιγραφή', 'Ανατολικά του πλατώματος, όπου βρίσκεται "
+                "το Στωικό Κτήριο, σε ένα κατώτερο πλάτωμα ήρθε στο φως ένα άλλο, δημόσιου χαρακτήρα, κτήριο της αρχαίας Αιανής', "
+                "'Το κτήριο χρονολογείται από τα υστεροαρχαϊκά και κλασικά χρόνια']"
+                "reference: Το κτήριο χρονολογείται από τα υστεροαρχαϊκά και κλασικά χρόνια."
+                "Κείμενο πάνω στο οποίο θα δημιουργηθούν τα δείγματα: "),
+
+            "s3": (
+                f"επέστρεψε ακριβώς {num} δείγματα ως structured output, (κάθε δείγμα αποτελείται απο user_input, reference_contexts "
+                "και reference). Η ερώτηση του δείγματος θα πρέπει να είναι πολλαπλής επιλογής με 4 επιλογές."
+                "Μόνο μια απο τις 4 επιλογές θα πρέπει να είναι η σωστή. Εξασφάλισε την ορθότητα της ερώτησης, των 4 "
+                "επιλογών και της απάντησης. Η ερώτηση που θα παράξεις θα πρέπει να μπορεί να απαντηθεί απο το δοθέν κείμενο."
+                "Τα δείγματα θα πρέπει να υπακούν στην εξής δομή:"
+                "user_input: ερώτηση πάνω στο κείμενο"
+                "reference_contexts: σημεία του κειμένου πάνω στα οποία βασίζεται η σωστή απάντηση"
+                "reference: Η σωστή απάντηση στην ερώτηση"
+                "Παραδείγμα:"
+                "user_input: Τι σχήμα σχηματίζουν οι δύο πλευρές της στοάς του Στωικού κτηρίου που έχουν διασωθεί; "
+                "A) σχηματίζουν Ο, Β) σχηματίζουν ευθεία, Γ) σχηματίζουν  τετράγωνο, Δ) σχηματίζουν Γ."
+                "reference_contexts: ['Στωικό κτήριο, Περιγραφή Ένα ακόμη σημαντικό κτήριο της αρχαίας Αιανής, "
+                "δημόσιου χαρακτήρα και αυτό όπως της Δεξαμενής', 'Έχουν σωθεί οι δύο πλευρές της στοάς, μήκους 25μ. "
+                "και 20μ. αντίστοιχα, οι οποίες σχηματίζουν ένα Γ']"
+                "reference: Δ"
+                "Κείμενο πάνω στο οποίο θα δημιουργηθούν τα δείγματα: "),
+
+            "s4": (
+                f"επέστρεψε ακριβώς {num} δείγματα ως structured output, (κάθε δείγμα αποτελείται απο user_input, reference_contexts "
+                "και reference). Η ερώτηση του δείγματος θα πρέπει να ζητάει για 3 πληροφορίες κλειδιά που υπάρχουν μέσα στο κείμενο"
+                "Η ερώτηση θα πρέπει να είναι συγκεκριμένη και όχι γενική."
+                "Η ερώτηση που θα παράξεις θα πρέπει να μπορεί να απαντηθεί απο το δοθέν κείμενο."
+                "Τα δείγματα θα πρέπει να υπακούν στην εξής δομή:"
+                "user_input: ερώτηση πάνω στο κείμενο"
+                "reference_contexts: σημεία του κειμένου πάνω στα οποία βασίζεται η σωστή απάντηση"
+                "reference: Η σωστή απάντηση στην ερώτηση"
+                "Παραδείγμα:"
+                "user_input: Ποιό είναι ένα σημαντικό οικοδόμημα το οποίο αποκαλύφθηκε σε αυλή κτηρίου που βρίσκεται στον "
+                "λόφο της μεγάλης ράχης; Τι διαστάσεις έχει η δεξαμενή; Τι σκοπό επιτελούσε;"
+                "reference_contexts: [' Ένα από τα σημαντικά κτήρια, δημόσιου χαρακτήρα, που αποκαλύφθηκαν στον επιβλητικό λόφο"
+                "της Μεγάλης Ράχης', ' ανήκουν στην αρχαία πόλη της Αιανής, είναι το μεγάλο οικοδόμημα στην αυλή του "
+                "οποίου ανασκάφηκε μεγάλη κυκλική Δεξαμενή', 'Η κυκλική δεξαμενή έχει βάθος 8,5μ. και στο κατώτερο "
+                "τμήμα της, διαμέτρου 4,5μ., και σε ύψος περίπου 2μ. σώζεται η αρχική της μορφή', 'Η Δεξαμενή αυτή "
+                "βοηθούσε στην υδροδότηση της πόλης με την περισυλλογή του βρόχινου νερού.']"
+                "reference: Το σημαντικό οικοδόμημα το οποίο αποκαλύφθηκε σε αυλή κτηρίου που βρίσκεται στον "
+                "λόφο της μεγάλης ράχης είναι η κυκλική δεξαμενή, οι διαστάσεις τις είναι 8.5μ βάθος, 4.5μ διάμετρος "
+                "και 2μ ύψος. Ο σκοπός που επιτελούσε ήταν η υδροδότηση της πόλης και η περισυλλογή του βρόχινου νερού."
+                "Κείμενο πάνω στο οποίο θα δημιουργηθούν τα δείγματα: "),
+
+            "s5": (
+                f"επέστρεψε ακριβώς {num} δείγματα ως structured output, (κάθε δείγμα αποτελείται απο user_input, reference_contexts "
+                "και reference). Η ερώτηση του δείγματος θα πρέπει να είναι πολλαπλής επιλογής με 4 επιλογές."
+                "Μόνο μια απο τις 4 επιλογές θα πρέπει να είναι η σωστή. Εξασφάλισε την ορθότητα της ερώτησης, των 4 "
+                "επιλογών και της απάντησης."
+                "Η ερώτηση του δείγματος θα πρέπει να απαιτεί συλλογιστικό συνδιασμό διαφόρων σημείων "
+                "του κειμένου για να απαντηθεί. Η ερώτηση θα πρέπει να είναι συγκεκριμένη και όχι γενική."
+                "Τα δείγματα θα πρέπει να υπακούν στην εξής δομή:"
+                "user_input: ερώτηση πάνω στο κείμενο"
+                "reference_contexts: σημεία του κειμένου πάνω στα οποία βασίζεται η σωστή απάντηση"
+                "reference: Η σωστή απάντηση στην ερώτηση"
+                "Παραδείγμα:"
+                "user_input: Ποιό είναι το οικοδόμημα ζωτικής σημασίας για ους πολίτες της αρχαίας Αιανής που βρίσκεται"
+                "ΒΔ του Στωικού κτηρίου; Α) Το Στωικό κτήριο, Β) Η Δεξαμενή, Γ) Το Σπίτι με πιθάρια, Δ) Το Σπίτι με σκάλες"
+                "reference_contexts: ['ανήκουν στην αρχαία πόλη της Αιανής, είναι το μεγάλο οικοδόμημα στην αυλή του "
+                "οποίου ανασκάφηκε μεγάλη κυκλική Δεξαμενή.', 'Η Δεξαμενή αυτή βοηθούσε στην υδροδότηση της πόλης με "
+                "την περισυλλογή του βρόχινου νερού', 'Ιδιαίτερα διδακτική είναι η επίσκεψη των οικοδομημάτων που "
+                "αποκαλύφθηκαν στο μεγάλο, επίπεδο σχεδόν,   χώρο πριν ανέβουμε  στο κορυφαίο πλάτωμα με τη Δεξαμενή, "
+                "ΒΔ του μεγάλου «Στωικού κτηρίου».']"
+                "reference: Β"
+                "Κείμενο πάνω στο οποίο θα δημιουργηθούν τα δείγματα: "),
+
+            "s6": (f"επέστρεψε ακριβώς {num} δείγματα ως structured output, (κάθε δείγμα αποτελείται απο user_input"
+                   "και reference). για την ερώτηση του δείγματος Θα πρέπει πρώτα να εξάγεις την θεματολογία του κειμένου "
+                   "και στην συνέχεια να δημιουργήσεις ερώτηση εντελώς διαφορετική απο την θεματολογία του κειμένου."
+                   "Η ερώτηση που θα παράξεις δεν θα πρέπει να μπορεί να απαντηθεί απο το δοθέν κείμενο."
+                   "Τα δείγματα θα πρέπει να υπακούν στην εξής δομή:"
+                   "user_input: ερώτηση πάνω στο κείμενο"
+                   "reference: Η σωστή απάντηση στην ερώτηση"
+                   "Παραδείγμα:"
+                   "user_input: Εξήγησε μου πως να κάνω σκί."
+                   "reference: Συγγνώμη αλλά δεν μπορώ να σου απαντήσω σε αυτό. Μπορώ να σου απαντήσω σε ερωτήματα "
+                   "σχετικά με το αρχαιολογικό μουσείο της Αιανής."
+                   "Κείμενο πάνω στο οποίο θα δημιουργηθούν τα δείγματα: "),
+
+            "s7": (
+                f"επέστρεψε ακριβώς {num} δείγματα ως structured output, (κάθε δείγμα αποτελείται απο user_input, reference_contexts "
+                "και reference) όπου κάποια θα μπορούν να απαντηθούν με απλή αναφορά στο κείμενο"
+                "ενώ άλλα θα χρειάζονται συνδιασμό διαφόρων σημείων του κειμένου για να απαντηθούν."
+                "Τα δείγματα θα πρέπει να υπακούν στην εξής δομή:"
+                "user_input: ερώτηση πάνω στο κείμενο"
+                "reference_contexts: σημεία του κειμένου πάνω στα οποία βασίζεται η σωστή απάντηση"
+                "reference: Η σωστή απάντηση στην ερώτηση"
+                "Παραδείγμα:"
+                "user_input: Πώς είναι διαμορφομένο το «σπίτι με σκάλες»?"
+                "reference_contexts: ['Πρόκειται για μια οικία ορθογώνιας κάτοψης με μικρά και μεγάλα δωμάτια, "
+                "ενώ στο μέσο της υπάρχει διάδρομος με σκαλοπάτια.', 'Και το σπίτι αυτό λόγω της κλίσης "
+                "του εδάφους είναι χτισμένο σε διαφορετικά επίπεδα τα οποία επικοινωνούν μεταξύ τους με λίθινες σκάλες']"
+                "reference: Το «σπίτι με σκάλες» είναι μια οικεία με ορθογώνια κάτοψη, έχει μικρά και μεγάλα δωμάτια"
+                "ενώ στο μέσο του υπάρχει ένας διάδρομος με σκαλοπάτια. Επιπλέον, λόγω της κλίσης του εδάφους"
+                "είναι χτισμένο σε διαφορετικά επίπεδα τα οποία επικοινωνούν μεταξύ τους με λίθινες σκάλες."
+                "Κείμενο πάνω στο οποίο θα δημιουργηθούν τα δείγματα: ")
+        }
+        cat = categories.get(question_categorie, None)
+        if not cat:
+            raise Exception("You should specifie a valid question category!!!")
+        self._users_prompt = cat
+
+    def _load_docs(self, directory, save_path="./"):
         """
         Loads the pdfs in document objects in docs attribute
         :param directory: The path to the documents
+        :param: save_path: The path to save the loaded docs.
         :return: None
         """
         print("Loading docs...")
 
         # Load docs from a pickle file if possible
-        self.docs = self._load_pickle("docs.pkl")
+        self.docs = self._load_pickle(f"{directory.replace('*', '')}docs.pkl")
 
         if not self.docs:
             doc_paths = glob.glob(directory)
             docs = []
-            for path in tqdm(doc_paths, total=len(doc_paths)):
+            for path in tqdm(doc_paths, total=len(doc_paths), desc="Loading docs: "):
                 doc = MyDoc(path)
                 docs.append(doc.get_pages())
 
@@ -73,7 +222,7 @@ class Tester:
                 raise ValueError("No documents were loaded. Please check your directory path and document content.")
 
             self.docs = docs
-            self._save_pickle("docs.pkl", self.docs)
+            self._save_pickle(f"{save_path}docs.pkl", self.docs)
         print(f"Loaded {len(self.docs)} document.")
 
     def _gpt_api_call(self, text: str, model="gpt-4o-mini") -> DataList:
@@ -88,22 +237,7 @@ class Tester:
                             "Τα δεδομένα που θα δημιουργήσεις πρέπει να βασίζονται σε δοθέν κείμενο."
                  },
                 {"role": "user",
-                 "content": "επέστρεψε ακριβώς 3 δείγματα ως structured output, (κάθε δείγμα αποτελείται απο user_input, reference_contexts "
-                            "και reference) όπου κάποια θα μπορούν να απαντηθούν με απλή αναφορά στο κείμενο"
-                            "ενώ άλλα θα χρειάζονται συνδιασμό διαφόρων σημείων του κειμένου για να απαντηθούν."
-                            "Τα δείγματα θα πρέπει να υπακούν στην εξής δομή:"
-                            "user_input: ερώτηση πάνω στο κείμενο"
-                            "reference_contexts: σημεία του κειμένου πάνω στα οποία βασίζεται η σωστή απάντηση"
-                            "reference: Η σωστή απάντηση στην ερώτηση"
-                            "Παραδείγμα:"
-                            "user_input: Πώς είναι διαμορφομένο το «σπίτι με σκάλες»?"
-                            "reference_contexts: ['Πρόκειται για μια οικία ορθογώνιας κάτοψης με μικρά και μεγάλα δωμάτια, "
-                            "ενώ στο μέσο της υπάρχει διάδρομος με σκαλοπάτια.', 'Και το σπίτι αυτό λόγω της κλίσης "
-                            "του εδάφους είναι χτισμένο σε διαφορετικά επίπεδα τα οποία επικοινωνούν μεταξύ τους με λίθινες σκάλες']"
-                            "reference: Το «σπίτι με σκάλες» είναι μια οικεία με ορθογώνια κάτοψη, έχει μικρά και μεγάλα δωμάτια"
-                            "ενώ στο μέσο του υπάρχει ένας διάδρομος με σκαλοπάτια. Επιπλέον, λόγω της κλίσης του εδάφους"
-                            "είναι χτισμένο σε διαφορετικά επίπεδα τα οποία επικοινωνούν μεταξύ τους με λίθινες σκάλες."
-                            "Κείμενο πάνω στο οποίο θα δημιουργηθούν τα δείγματα: " + text
+                 "content": self._users_prompt + '\n' + text
                  }
             ],
             response_format=DataList,
@@ -145,7 +279,8 @@ class Tester:
                 raise FileNotFoundError("You need to accept the data set first!!")
             return None
 
-    def _query_generator(self, generator: Generator) -> tuple[list[str], list[list[str]]]:
+    def _query_generator(self, generator: Generator, test_set="test_set_accepted.pkl") -> tuple[
+        list[str], list[list[str]]]:
         """
         prompts the given generator function with the test set questions and collects the answers and retrieved texts
         :param generator: The generator object that will answer the test questions.
@@ -153,7 +288,7 @@ class Tester:
         """
 
         # Load test_set_accepted.pkl
-        dataset = self._load_pickle("test_set_accepted.pkl")
+        dataset = self._load_pickle(test_set)
 
         dataset = dataset.to_list()
         print(dataset)
@@ -168,23 +303,23 @@ class Tester:
         ans = []
         cont = []
         for question in tqdm(questions, total=len(questions)):
-            answer, context = generator.generate_answer_structured(question, model="gpt-4o-mini")
+            answer, context = generator.generate_answer_structured(question)
             ans.append(answer)
             cont.append(context)
 
         return ans, cont
 
-
-    def _create_eval_set(self, answers, contexts) -> EvaluationDataset:
+    def _create_eval_set(self, answers, contexts, test_set) -> EvaluationDataset:
         """
         Creates the evaluation set based on the 'test_set_accepted.pkl' answers and contexts.
         :param answers: The answers to the test set question.
         :param contexts: The contexts provided to the model to answer.
+        :param test_set: The test_set from which the evaluation test set will be created.
         :return: The evaluation set.
         """
 
         # Load test_set_accepted.pkl
-        dataset = self._load_pickle("test_set_accepted.pkl")
+        dataset = self._load_pickle(test_set)
         dataset = dataset.to_list()
 
         # Create the eval set
@@ -231,46 +366,104 @@ class Tester:
 
         return metrics_to_return
 
+    def _extract_text(self):
+        """
+        extracts text from documents in self.docs, if self.docs is empty an error will be raised.
+        :return: str
+        """
+        text_docs = ''
+        for doc in tqdm(self.docs, total=len(self.docs)):
+            # extract text
+            text = ""
+            for page in doc:
+                text += page.page_content
+            text_docs += text
+        return text_docs
 
     # === CALLABLE METHODS === #
 
-    def generate_test_data(self, directory="aiani dedomena/*", model="gpt-4o-mini") -> Testset:
+    def load_test_set(self):
+        pass
+
+    def generate_test_data_multiple_docs(self,
+                                         paths: list[str] = ['aiani dedomena/aithouses/*', 'aiani dedomena/anaskafes/*',
+                                                             'aiani dedomena/ekthemata/*', 'aiani dedomena/tafoi/*'],
+                                         model: str = "gpt-4o-mini",
+                                         name: list[str] = ["test_set_multiple_not_accepted"],
+                                         question_categories: list[str] = ["s7"],
+                                         num=2) -> None:
         """
-        Generates Test data set in ragas ready format.
+        Generates Test data set in ragas ready format from a multiple documents.
         If the dataset already exists, it will be loaded from a pickle file.
-        :param directory: The path to the documents.
-        :param model: The model to use for generating the test data. Default is "gpt-4o-mini".
-        :return: Evaluation dataset of format Testset[TestsetSample[SingleTurnSample]
+        :param paths: List of the paths from which to load the documents. Note you must / in the end
+        :param model: The model to be used for test data generation
+        :param name: List of names of the pickle file that thet test data will be save (in pickle format), one name per question categorie.
+        :param question_categories: List of categories of questions to generate.
+        :param num: number of questions per document cluster.
+        :return: None
+        :saves: Evaluation dataset of format Testset[TestsetSample[SingleTurnSample] in pickle format
         """
 
-        # Check if eval dataset already exists
-        generated_data = self._load_pickle("eval_dataset.pkl")
-        if generated_data:
-            print("test dataset already exists. Loading...")
-            return generated_data
-        else:
-            # If data set does not already exist generate them
-            self._load_docs(directory)
+        # Check that question name and categories are of the same length.
+        if len(name) != len(question_categories):
+            raise Exception("You should specify the same number of names as the question categories!!!")
+        # For every question category
+        for i in tqdm(range(len(question_categories)), total=len(question_categories), desc="Generating data: "):
+            # Set the appropriate user prompt.
+            self._set_user_prompt(question_categorie=question_categories[i], num=num)
 
-            # Generate data for each document
             generated_data = []
-            print("Generating data...")
-            for doc in tqdm(self.docs, total=len(self.docs)):
-                # extract text
-                text = ""
-                for page in doc:
-                    text += page.page_content
-                generated_data.extend(self._gpt_api_call(text, model=model).data)
-            print(f"Generated data: {generated_data[:]}")
-            print("Data generated.")
+            for directory in tqdm(paths, total=len(paths), desc="Document set parsed: "):
+                # Load documents in myDoc format
+                self._load_docs(directory, save_path=directory.replace('*', ''))
 
-            # Load them in the appropriate format
+                # Get texts from loaded documents
+                text_from_docs = self._extract_text()
+
+                # Generate data for each set of documents
+                print("Generating data...")
+                generated_data.extend(self._gpt_api_call(text_from_docs, model=model).data)
+
+            # Load data in the appropriate format
             generated_data = Testset(samples=[ragas_sample.to_ragas_sample() for ragas_sample in generated_data])
             print("Dataset: ", generated_data)
 
             # Save data
-            self._save_pickle("test_set_not_accepted.pkl", generated_data)
-            print("Test dataset saved.")
+            self._save_pickle(f"Test sets/{name[i]}", generated_data)
+            print(f"Test dataset saved name: {name[i]}.")
+
+    def generate_test_data_single_doc(self, directory="aiani dedomena/*", model="gpt-4o-mini",
+                                      name="test_set_single_not_accepted.pkl") -> Testset:
+        """
+        Generates Test data set in ragas ready format per single document.
+        If the dataset already exists, it will be loaded from a pickle file.
+        :param name: The name of the test set picklefile.
+        :param directory: The path to the documents.
+        :param model: The model to use for generating the test data. Default is "gpt-4o-mini".
+        :return: Evaluation dataset of format Testset[TestsetSample[SingleTurnSample]
+        """
+        # Load documents
+        self._load_docs(directory)
+
+        # Generate data for each document
+        generated_data = []
+        print("Generating data...")
+        for doc in tqdm(self.docs, total=len(self.docs)):
+            # extract text
+            text = ""
+            for page in doc:
+                text += page.page_content
+            generated_data.extend(self._gpt_api_call(text, model=model).data)
+        print(f"Generated data: {generated_data[:]}")
+        print("Data generated.")
+
+        # Load them in the appropriate format
+        generated_data = Testset(samples=[ragas_sample.to_ragas_sample() for ragas_sample in generated_data])
+        print("Dataset: ", generated_data)
+
+        # Save data
+        self._save_pickle(name, generated_data)
+        print("Test dataset saved.")
 
         return generated_data
 
@@ -306,8 +499,7 @@ class Tester:
 
         testset = Testset(samples=samples)
 
-        self._save_pickle("test_set_accepted.pkl", testset)
-
+        self._save_pickle("Test sets/02_test_set_acc.pkl", testset)
 
     def to_csv(self, dataset: str, filename: str):
         """
@@ -324,11 +516,9 @@ class Tester:
         df = ds.to_pandas().to_csv(path_or_buf=filename, encoding="utf-16")
         print(df)
 
-
-
-
     @classmethod
-    def test(cls, generator: Generator, metrics: list[str], save_as="evaluated_dataset.pkl", load_evaluation_set="", upload: Boolean=True):
+    def test(cls, generator: Generator, metrics: list[str], save_as_evaluated="evaluated_dataset.pkl",
+             load_evaluation_set="", upload: Boolean = True, test_set="", save_as_evaluation="evaluation_set.pkl"):
         """
         Runs a test set on a generator and evaluates the results.
         The test set should be first accepted using the 'accept_test_set()' method.
@@ -338,11 +528,14 @@ class Tester:
                         response_relevancy, semantic_similarity, context_entity_recall,
                         llm_context_precision_with_reference, context_recall, factual_correctness, faithfulness,
                         non_llm_string_similarity, blue_score, rouge_score.
-        :param save_as: The name of the file that results of evaluation will be saved,
-        defaults to 'evaluated_dataset.pkl'.
+        :param save_as_evaluated: The name of the file that results of evaluation (evaluated data set) will be saved,
+                        defaults to 'evaluated_dataset.pkl'.
+        :param save_as_evaluation: The name of the evaluation data set to be saved.
         :param load_evaluation_set: The name of the evaluation set to load, if none is given, the evaluation set will be generated.
         :param upload: Weather or not to upload the evaluated data set to ragas.
-        Default is True
+                       Default is True
+        :param test_set: The test from which will be created the evaluation set. If this parameter is set the
+                         'load_evaluation_set' should be empty and vise versa.
         :return: None
         """
 
@@ -350,8 +543,12 @@ class Tester:
         t = cls()
 
         # Initiate evaluator llm.
-        llm = ChatOpenAI(model="gpt-4o-mini")
+        llm = ChatOpenAI(model="gpt-4o")
         evaluator_llm = LangchainLLMWrapper(llm)
+
+        # Check if only one of load_evaluation_set and test_set is defined
+        if load_evaluation_set and test_set:
+            raise Exception("Define only one of the parameters load_evaluation_set and test_set is defined")
 
         # If specified load evaluation data set
         if load_evaluation_set:
@@ -360,12 +557,12 @@ class Tester:
         else:
             # Answer test question from generator and create evaluation dataset.
             print("creating evaluation data set...")
-            answers, contexts = t._query_generator(generator)
-            eval_set = t._create_eval_set(answers, contexts)
+            answers, contexts = t._query_generator(generator, test_set=test_set)
+            eval_set = t._create_eval_set(answers, contexts, test_set)
 
             # Save eval set
             print("Saving evaluation data set that created...")
-            t._save_pickle("evaluation_set.pkl", eval_set)
+            t._save_pickle(save_as_evaluation, eval_set)
 
         # Get evaluation dataset results.
         result = evaluate(
@@ -381,7 +578,7 @@ class Tester:
         )
 
         # Save evaluation dataset
-        t._save_pickle(save_as, result)
+        t._save_pickle(save_as_evaluated, result)
 
         print(result)
 
@@ -390,20 +587,35 @@ class Tester:
             result.upload()
 
 
+t = Tester()
+# t.generate_test_data_multiple_docs(name=["03_s1_test_not_acc.pkl",
+#                                          "03_s2_test_not_acc.pkl",
+#                                          "03_s3_test_not_acc.pkl",
+#                                          "03_s4_test_not_acc.pkl",
+#                                          "03_s5_test_not_acc.pkl",
+#                                          "03_s6_test_not_acc.pkl"],
+#                                    model='gpt-4o-mini',
+#                                    question_categories=["s1", "s2", "s3", "s4", "s5", "s6"],
+#                                    num=2)
 
-
-
-
-
-
-# Tester.test(Generator(Embedder(), "Mycollection", n_results=20), load_evaluation_set="evaluation_set.pkl")
+# Tester.test(
+#     Generator(Embedder(),
+#               "Mycollection",
+#               n_results=20,
+#               model='gpt-4o'),
+#     upload=False,
+#     metrics=['answer_correctness', 'response_relevancy', 'context_recall'],
+#     load_evaluation_set='01_gpt-4o-evaluation_set.pkl',
+#     save_as_evaluated="02_gpt-4o-evaluated_set.pkl",
+# )
 #
+# #
 # t = Tester()
-# t.to_csv("evaluated_dataset.pkl", "evaluated_dataset_csv.csv")
+t.to_csv("Test sets/03_s6_test_not_acc.pkl", "s6_dataset_csv.csv")
 # t.accept_test_set("testset.json")
 
 # t.generate_test_data(model="gpt-4o-mini")
-# t.upload_dataset("evaluated_dataset.pkl")
+# t.upload_dataset("01_gpt-4o-eval_set.pkl")
 
 
 # gen = Generator(Embedder(), "Mycollection", n_results=10)

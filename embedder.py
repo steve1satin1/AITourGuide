@@ -409,18 +409,18 @@ class Embedder(Consts):
 
 
 # embedder = Embedder()
-# embedder.load_docs(directory="aiani dedomena/*", chunking_type=Embedder.ByChar)
-# # print(embedder.get_chunks())
-#
-#
-# embedder.delete_collections("all")
+# embedder.load_docs(directory="aiani dedomena/to_embed/*", chunking_type=Embedder.ByChar)
+# print(embedder.get_chunks())
 # #
-# # # print(embedder.get_chunks())
+# #
+# embedder.delete_collections("all")
+# # #
+# # # # print(embedder.get_chunks())
 # embedder.add_data("Mycollection")
-#
-# print(embedder.search_similar("Mycollection", "Τι είναι η δεξαμενή?", n_results=3))
-#
-# # embedder.visualize("Mycollection", dimensions=["2d", "3d"])
+# #
+# # print(embedder.search_similar("Mycollection", "Τι είναι η δεξαμενή?", n_results=3))
+# #
+# embedder.visualize("Mycollection", dimensions=["2d", "3d"])
 
 
 

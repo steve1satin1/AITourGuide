@@ -2,10 +2,11 @@ from embedder import Embedder
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
+from pathlib import Path
 
 class Generator:
 
-    def __init__(self, embedder: Embedder, collection_name, n_results=3):
+    def __init__(self, embedder: Embedder, collection_name, n_results=3, model="gpt-4o-mini"):
         """
         Generator that answers questions using the model used to generate the specified collection.
         Just create an instance of the class and use the generate_answer() method to answer questions.
@@ -21,13 +22,19 @@ class Generator:
         self._system_prompt = ("Είσαι ένας ξεναγός του αρχαιολογικού μουσείου Αιανής που βρισκεται στην Κοζάνη (μια μικρή πόλη στην Ελλάδα). "
                                "Στόχος σου είναι να απαντάς στις ερωτήσεις που κάνουν οι επισκέπτες. "
                                "Για κάθε ερώτηση θα σου παρέχεται σχετικά κομμάτια κειμένου τα οποία μπορείς να συμβουλευτείς για να απαντήσεις στην ερώτηση του χρήστη."
+                               "Υπάρχει περίπτωση ο χρήστης να σου γράψει κάτι το οποίο δεν χρειάζεται να συμβουλευτείς "
+                               "τα σχετικά κομμάτια κειμένου για να απαντήσεις, όπως για παράδειγμα 'Ευχαριστώ πολύ' ή "
+                               "'γειά σου' σε αυτές τις περιπτώσεις μην λάβεις υπόψην σου τα σχετικά κομμάτια κειμένου που θα σου δοθούν."
                                "Στην περίπτωση που δεν γνωρίζεις την απάντηση στην ερώτηση που έθεσε ο χρήστης πες με ευγενικό τρόπο πως δεν γνωρίζεις την απάντηση και μήπως θέλει να ρωτήσει κάτι άλλο."
                                "Σε κάθε κομμάτι κειμένου που σου παρέχεται θα υπάρχει και η πηγή απο την οποία προήλθε και θα αναγράφεται στο τέλος του μετά την λέξη κλειδί «Πηγή:», "
                                "αν χρησιμοποιήσεις κάποια απο τα κομμάτια αυτά στο τέλος της απάντησης σου παρέθεσε της πηγές απο τα κομμάτια κειμένου που χρησιμοποίησες γράφοντας «Πηγές: (αναφορά των πηγών σε bullets)»"
                                "Μην βάζεις δικές σου πηγές αλλά μόνο αυτές που αναφέρονται σε κάθε κομμάτι κειμένου μετά την λέξη κλειδή «Πηγή:»")
-        self._model = "gpt-4o-mini"
+
+        self._model = model
+
         self._conversation = [
-            {"role": "system", "content": self._system_prompt}
+            {"role": "system", "content": self._system_prompt},
+            {"role": "assistant", "content": "Γειά σας είμαι ψηφιακός βοηθός του μουσείου Αιανής πως μπορώ να σας βοηθήσω;"}
         ]
 
         self._embedder = embedder
@@ -45,7 +52,7 @@ class Generator:
 
         prompt = ""
         prompt += f"{question}\n\n"
-        prompt += "Παρακαλώ συμβουλεύσου τα παρακάτω σχετικά με την ερώτηση κείμενα πριν απαντήσεις: \n\n"
+        prompt += "Παρακαλώ συμβουλεύσου τα παρακάτω σχετικά με την ερώτηση κείμενα πριν απαντήσεις εάν η ερώτηση του χρήστη το απαιτεί: \n\n"
 
         similars = self._embedder.search_similar(self._collection_name, question, n_results=self._n_results)
         texts = similars[0]
@@ -67,14 +74,18 @@ class Generator:
         return self._conversation
 
 
-    def _get_answering_fn(self) -> callable:
+    def _get_answering_fn(self, streaming=True) -> callable:
         """
         Gets the answering function based on the model.
+        :param streaming: weather or not to stream the answer, default to True.
         :return: The function to be used for answering.
         """
-        gpt_models = ["chatgpt-4o-latest", "gpt-4o-mini", "o1-preview"]
+        gpt_models = ["chatgpt-4o-latest", "gpt-4o-mini", "o1-preview", "gpt-4o"]
         if self._model in gpt_models:
-            return self._gpt_answering_fn
+            if streaming:
+                return self._gpt_answering_fn
+            else:
+                return self._gpt_answering_fn_non_stream
         else:
             raise Exception(f"Currently the only supported models are {', '.join(gpt_models)}")
 
@@ -108,6 +119,24 @@ class Generator:
             if chunk.choices[0].delta.content is not None:
                 yield chunk.choices[0].delta.content
 
+    def _gpt_answering_fn_non_stream(self):
+        """
+        Generates an answer using the GPT model.
+        The method _update_conversation() should be called before calling this method.
+        :return: The generated answer as a generator of strings. Each string represents a chunk of the answer.
+        """
+
+        # Change conversation to meet openai standards
+        conversation = self._fetch_conversation()
+        conversation[0]["role"] = "developer"
+
+        completion = self._gpt_client.chat.completions.create(
+            model=self._model,
+            messages=conversation,
+        )
+
+        return completion.choices[0].message.content
+
     def _is_conversation_empty(self) -> bool:
         """
         Checks if the conversation is empty.
@@ -131,14 +160,14 @@ class Generator:
             print("sources: ", text)
             return text
 
-
-    ## ====== CALLABLE METHODS ====== ##
-    def generate_answer(self, question, model):
+    def _prework_for_answ_gen(self, question, model, streaming=True):
         """
-        Generates an answer to the given question using the given model.
-        :param model: The model to use for generating the answer.
+        Preparation for answer generation. Sets the model to the specified one,
+        Prepares the prompt, updates the conversation list and gets the answering fn based on the given model.
         :param question: The question to answer.
-        :return: generator of strings. Each string represents a chunk of the answer.
+        :param model: The model to use for generating the answer.
+        :param streaming: weather or not to stream the answer.
+        :return: The answering function
         """
         # Set the model to the specified one
         self._model = model
@@ -150,7 +179,23 @@ class Generator:
         self._update_conversation("user", prompt)
 
         # Get the answering fn based on the given model
-        answering_fn = self._get_answering_fn()
+        answering_fn = self._get_answering_fn(streaming=streaming)
+
+        return answering_fn
+
+
+
+    ## ====== CALLABLE METHODS ====== ##
+    def generate_answer(self, question, model):
+        """
+        Generates an answer to the given question using the given model.
+        :param model: The model to use for generating the answer.
+        :param question: The question to answer.
+        :return: generator of strings. Each string represents a chunk of the answer.
+        """
+
+        # Get the answering fn based on the given model
+        answering_fn = self._prework_for_answ_gen(question, model, streaming=True)
 
         answer = ""
         for chunk in answering_fn():
@@ -163,16 +208,45 @@ class Generator:
         # Save answer to the conversation
         self._update_conversation("assistant", answer)
 
-    def generate_answer_structured(self, question, model) -> tuple[str, list[str]]:
+    def generate_answer_non_steam(self, question, model) -> str:
+        """
+        Generates answer without streaming it.
+        :param question: The question to answer.
+        :param model: The model to use for generating the answer.
+        :return: Answer as a string
+        """
+
+        # Get the answering fn based on the given model
+        answering_fn = self._prework_for_answ_gen(question, model, streaming=False)
+
+        # Generate answer
+        answer = answering_fn()
+
+        # Save only the user's question
+        self._conversation[-1]["content"] = question
+
+        # Save answer to the conversation
+        self._update_conversation("assistant", answer)
+
+        return answer
+
+    def generate_answer_structured(self, question) -> tuple[str, list[str]]:
         """
         Generates answer and provided contexts as structured output.
         :param question: The question for the model to answer.
         :param model: The model to use for answering the question.
         :return: Tuple(answer, contexts)
         """
-
-        # Set the model to the specified one
-        self._model = model
+        # Set a specific system prompt for evaluation
+        self._conversation[0]['content'] = (
+            "Είσαι ένας ξεναγός του αρχαιολογικού μουσείου Αιανής που βρισκεται στην Κοζάνη (μια μικρή πόλη στην Ελλάδα). "
+            "Στόχος σου είναι να απαντάς στις ερωτήσεις που κάνουν οι επισκέπτες. "
+            "Για κάθε ερώτηση θα σου παρέχεται σχετικά κομμάτια κειμένου τα οποία μπορείς να συμβουλευτείς για να απαντήσεις στην ερώτηση του χρήστη."
+            "Υπάρχει περίπτωση ο χρήστης να σου γράψει κάτι το οποίο δεν χρειάζεται να συμβουλευτείς "
+            "τα σχετικά κομμάτια κειμένου για να απαντήσεις, όπως για παράδειγμα 'Ευχαριστώ πολύ' ή "
+            "'γειά σου' σε αυτές τις περιπτώσεις μην λάβεις υπόψην σου τα σχετικά κομμάτια κειμένου που θα σου δοθούν."
+            "Στην περίπτωση που δεν γνωρίζεις την απάντηση στην ερώτηση που έθεσε ο χρήστης πες με ευγενικό τρόπο πως δεν γνωρίζεις την απάντηση και μήπως θέλει να ρωτήσει κάτι άλλο."
+            "Οι απαντήσεις θα πρέπει να είναι λιτές και να περιέχουν μόνο την απάντηση στην ερώτηση όχι περιττές πληροφορίες.")
 
         # Prepare the prompt
         prompt, contexts = self._prepare_prompt(question)
@@ -194,6 +268,39 @@ class Generator:
         self._update_conversation("assistant", answer)
 
         return answer, contexts
+
+    def get_text_from_audio(self, path) -> str:
+        """
+        Generates text representation from given audio file path.
+        :param path: The path of the audio file
+        :return: str
+        """
+
+        with open(path, "rb") as audio_file:
+            transcript = self._gpt_client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                language="el",
+                response_format="text"
+            )
+        print(f"What came from audio api: {transcript}")
+        return transcript
+
+    def text_to_speech(self, text) -> None:
+        """
+        Streams the generated audio file from the given text.
+        :param text: The text to generate to audio.
+        :return: None
+        """
+
+        speech_file_path = Path(__file__).parent / "speech.mp3"
+        response = self._gpt_client.audio.speech.create(
+            model="tts-1",
+            voice="nova",
+            input=text,
+        )
+        response.stream_to_file(speech_file_path)
+        print("finished audio gen...")
 
     def get_conversation(self):
         pass

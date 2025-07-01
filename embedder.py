@@ -272,7 +272,7 @@ class Embedder(Consts):
         return deleted_collections
 
 
-    def search_similar(self, collection_name, *input_text, n_results=3) -> tuple[Any, list[Any]]:
+    def search_similar(self, collection_name, *input_text, n_results=20) -> tuple[Any, list[Any]]:
         """
         Searches specified collection for similar text chunks according to given input_text.
         :param n_results: How many results to return.
@@ -410,16 +410,16 @@ class Embedder(Consts):
 
 # embedder = Embedder()
 # embedder.load_docs(directory="aiani dedomena/to_embed/*", chunking_type=Embedder.ByChar)
-# print(embedder.get_chunks())
-# #
-# #
+# # # print(embedder.get_chunks())
+# # # #
+# # # #
 # embedder.delete_collections("all")
-# # #
-# # # # print(embedder.get_chunks())
-# embedder.add_data("Mycollection")
-# #
-# # print(embedder.search_similar("Mycollection", "Τι είναι η δεξαμενή?", n_results=3))
-# #
+# # # # #
+# # # # # # print(embedder.get_chunks())
+# embedder.add_data("Mycollection", embedding_model="text-embedding-3-large")
+# # # #
+# # # # print(embedder.search_similar("Mycollection", "Τι είναι η δεξαμενή?", n_results=3))
+# # # #
 # embedder.visualize("Mycollection", dimensions=["2d", "3d"])
 
 

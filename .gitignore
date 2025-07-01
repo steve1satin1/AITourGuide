@@ -2,4 +2,10 @@
 /Lib/
 /Scripts/
 .env
-
+.gradio
+.venv
+/evaluated_sets
+/share
+/Test sets
+playground.py
+pyvenv.cfg

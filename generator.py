@@ -80,7 +80,7 @@ class Generator:
         :param streaming: weather or not to stream the answer, default to True.
         :return: The function to be used for answering.
         """
-        gpt_models = ["chatgpt-4o-latest", "gpt-4o-mini", "o1-preview", "gpt-4o"]
+        gpt_models = ["chatgpt-4o-latest", "gpt-4o-mini", "o1-preview", "gpt-4o", "o3-mini", "o4-mini", "gpt-4.1"]
         if self._model in gpt_models:
             if streaming:
                 return self._gpt_answering_fn
@@ -237,6 +237,9 @@ class Generator:
         :param model: The model to use for answering the question.
         :return: Tuple(answer, contexts)
         """
+        # Clear conversation for token savings
+        self.initiate_conversation()
+
         # Set a specific system prompt for evaluation
         self._conversation[0]['content'] = (
             "Είσαι ένας ξεναγός του αρχαιολογικού μουσείου Αιανής που βρισκεται στην Κοζάνη (μια μικρή πόλη στην Ελλάδα). "
@@ -245,8 +248,9 @@ class Generator:
             "Υπάρχει περίπτωση ο χρήστης να σου γράψει κάτι το οποίο δεν χρειάζεται να συμβουλευτείς "
             "τα σχετικά κομμάτια κειμένου για να απαντήσεις, όπως για παράδειγμα 'Ευχαριστώ πολύ' ή "
             "'γειά σου' σε αυτές τις περιπτώσεις μην λάβεις υπόψην σου τα σχετικά κομμάτια κειμένου που θα σου δοθούν."
-            "Στην περίπτωση που δεν γνωρίζεις την απάντηση στην ερώτηση που έθεσε ο χρήστης πες με ευγενικό τρόπο πως δεν γνωρίζεις την απάντηση και μήπως θέλει να ρωτήσει κάτι άλλο."
-            "Οι απαντήσεις θα πρέπει να είναι λιτές και να περιέχουν μόνο την απάντηση στην ερώτηση όχι περιττές πληροφορίες.")
+            "Στην περίπτωση που δεν γνωρίζεις την απάντηση στην ερώτηση ιπου έθεσε ο χρήστης πες με ευγενικό τρόπο πως δεν γνωρίζεις την απάντηση και μήπως θέλει να ρωτήσει κάτι άλλο."
+            "Οι απαντήσεις θα πρέπει να είνα λιτές και να περιέχουν μόνο την απάντηση στην ερώτηση όχι περιττές πληροφορίες."
+            "Αν η ερώτηση του χρήστη είναι πολλαπλών επιλογών εσύ απάντα μόνο με το γράμμα που αντιστοιχεί στην σωστή επιλογή")
 
         # Prepare the prompt
         prompt, contexts = self._prepare_prompt(question)
@@ -260,12 +264,6 @@ class Generator:
         answer = ""
         for chunk in answering_fn():
             answer += chunk
-
-        # Save only the user's question
-        self._conversation[-1]["content"] = question
-
-        # Save answer to the conversation
-        self._update_conversation("assistant", answer)
 
         return answer, contexts
 
@@ -305,13 +303,24 @@ class Generator:
     def get_conversation(self):
         pass
 
+    def initiate_conversation(self):
+        """
+        Initiates the self._conversation.
+        :return: None
+        """
+
+        self._conversation = [
+            {"role": "system", "content": self._system_prompt},
+            {"role": "assistant", "content": "Γειά σας είμαι ψηφιακός βοηθός του μουσείου Αιανής πως μπορώ να σας βοηθήσω;"}
+        ]
+
 
 # embedder = Embedder()
 # embedder.load_docs(directory="aiani dedomena/*", chunking_type=Embedder.ByChar)
-#
+# #
 # if not embedder.collection_exists("Mycollection"):
 #     embedder.add_data("Mycollection")
-#
+# #
 # gen = Generator(embedder=embedder, collection_name="Mycollection", n_results=5)
 #
 # while True:

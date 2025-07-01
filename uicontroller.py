@@ -1,6 +1,6 @@
 import os
 import threading
-import gradio as gr  # Ensure the Gradio library is installed by running: pip install gradio
+import gradio as gr
 from generator import Generator
 from embedder import Embedder
 
@@ -45,7 +45,7 @@ class UIController:
         """
 
         question = history[-1]["content"]
-        bot_message = self.gen.generate_answer_non_steam(question, model="gpt-4o-mini")
+        bot_message = self.gen.generate_answer_non_steam(question, model="gpt-4.1")
         print(type(bot_message))
 
         # TODO ADD CODE FOR PARALLEL SPEECH CREATION

@@ -117,7 +117,7 @@ class UIController:
                 placeholder="Γράψτε την ερώτηση σας...",
                 show_label=False,
                 sources=["microphone"],
-                stop_btn=True,
+                stop_btn=False,
                 autoscroll=True,
                 autofocus=True,
             )
@@ -147,4 +147,4 @@ class UIController:
 ui = UIController(n_results=20)
 # ui.embedder.delete_collections("all")
 # ui.embedder.visualize(collection_name="Mycollection", dimensions=["2d", "3d"])
-ui.create_ui(share=False)
+ui.create_ui(share=True)
